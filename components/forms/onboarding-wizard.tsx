@@ -1,0 +1,584 @@
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Controller, useForm, type Path } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { toast } from "sonner";
+import {
+  BadgeCheck,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  ShieldCheck,
+  Upload,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Stepper } from "@/components/forms/stepper";
+import { CircularProgress } from "@/components/dashboard/circular-progress";
+import { Person } from "@/components/dashboard/person";
+import { useAuthRole } from "@/context/auth-provider";
+
+const schema = z.object({
+  firstName: z.string().min(1, "Required"),
+  lastName: z.string().min(1, "Required"),
+  email: z.string().email("Enter a valid email"),
+  phone: z.string().min(7, "Required"),
+  dob: z.string().min(1, "Required"),
+  gender: z.string().min(1, "Required"),
+  npiNumber: z.string().min(5, "Required"),
+  primarySpecialty: z.string().min(1, "Required"),
+  subSpecialty: z.string().optional(),
+  yearsOfExperience: z.string().min(1, "Required"),
+  employmentType: z.string().min(1, "Required"),
+  preferredLocations: z.string().min(1, "Add at least one location"),
+
+  licenseNumber: z.string().min(1, "Required"),
+  licenseState: z.string().min(1, "Required"),
+  licenseExpiry: z.string().min(1, "Required"),
+
+  backgroundCheckConsent: z.boolean().refine((v) => v, "Consent is required to continue"),
+
+  bankAccountHolder: z.string().min(1, "Required"),
+  bankName: z.string().min(1, "Required"),
+  accountNumber: z.string().min(4, "Required"),
+  routingNumber: z.string().min(4, "Required"),
+
+  agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+const steps = [
+  { label: "Personal Info" },
+  { label: "Medical License" },
+  { label: "Certifications" },
+  { label: "Documents" },
+  { label: "Background Check" },
+  { label: "Bank Details" },
+  { label: "Review & Submit" },
+];
+
+const stepFields: Path<FormValues>[][] = [
+  ["firstName", "lastName", "email", "phone", "dob", "gender", "npiNumber", "primarySpecialty", "yearsOfExperience", "employmentType", "preferredLocations"],
+  ["licenseNumber", "licenseState", "licenseExpiry"],
+  [],
+  [],
+  ["backgroundCheckConsent"],
+  ["bankAccountHolder", "bankName", "accountNumber", "routingNumber"],
+  ["agreeToTerms"],
+];
+
+const documentChecklist = [
+  { key: "medicalLicense", label: "Medical License" },
+  { key: "deaCertificate", label: "DEA Certificate" },
+  { key: "boardCertification", label: "Board Certification" },
+  { key: "aclsCertification", label: "ACLS Certification" },
+  { key: "blsCertification", label: "BLS Certification" },
+  { key: "photoId", label: "Photo ID" },
+  { key: "cvResume", label: "CV / Resume" },
+];
+
+const certificationOptions = [
+  { key: "acls", label: "ACLS — Advanced Cardiac Life Support" },
+  { key: "bls", label: "BLS — Basic Life Support" },
+  { key: "atls", label: "ATLS — Advanced Trauma Life Support" },
+  { key: "boardCertified", label: "Board Certified in Primary Specialty" },
+];
+
+export function OnboardingWizard() {
+  const router = useRouter();
+  const { login } = useAuthRole();
+  const [stepIndex, setStepIndex] = useState(0);
+  const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
+  const [certifications, setCertifications] = useState<Record<string, boolean>>({
+    acls: true,
+    bls: true,
+  });
+
+  const {
+    register,
+    control,
+    trigger,
+    watch,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      email: "",
+      phone: "",
+      dob: "",
+      gender: "",
+      npiNumber: "",
+      primarySpecialty: "",
+      subSpecialty: "",
+      yearsOfExperience: "",
+      employmentType: "",
+      preferredLocations: "",
+      licenseNumber: "",
+      licenseState: "",
+      licenseExpiry: "",
+      backgroundCheckConsent: false,
+      bankAccountHolder: "",
+      bankName: "",
+      accountNumber: "",
+      routingNumber: "",
+      agreeToTerms: false,
+    },
+  });
+
+  const values = watch();
+  const uploadedCount = Object.values(uploaded).filter(Boolean).length;
+  const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
+
+  async function handleNext() {
+    const fields = stepFields[stepIndex];
+    const valid = fields.length === 0 ? true : await trigger(fields);
+    if (!valid) return;
+    if (stepIndex === steps.length - 1) {
+      login("doctor");
+      toast.success("Application submitted! Your profile is now under review.");
+      router.push("/doctor/dashboard");
+      return;
+    }
+    setStepIndex((i) => Math.min(steps.length - 1, i + 1));
+  }
+
+  function handleBack() {
+    setStepIndex((i) => Math.max(0, i - 1));
+  }
+
+  return (
+    <div>
+      <Stepper steps={steps} currentIndex={stepIndex} className="mb-8" />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <Card>
+          <CardContent>
+            <FieldGroup>
+              {stepIndex === 0 && (
+                <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.firstName}>
+                      <FieldLabel htmlFor="firstName">First Name *</FieldLabel>
+                      <FieldContent>
+                        <Input id="firstName" {...register("firstName")} />
+                        <FieldError errors={[errors.firstName]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.lastName}>
+                      <FieldLabel htmlFor="lastName">Last Name *</FieldLabel>
+                      <FieldContent>
+                        <Input id="lastName" {...register("lastName")} />
+                        <FieldError errors={[errors.lastName]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.email}>
+                      <FieldLabel htmlFor="email">Email Address *</FieldLabel>
+                      <FieldContent>
+                        <Input id="email" type="email" {...register("email")} />
+                        <FieldError errors={[errors.email]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.phone}>
+                      <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
+                      <FieldContent>
+                        <Input id="phone" {...register("phone")} />
+                        <FieldError errors={[errors.phone]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <Field data-invalid={!!errors.dob}>
+                      <FieldLabel htmlFor="dob">Date of Birth *</FieldLabel>
+                      <FieldContent>
+                        <Input id="dob" type="date" {...register("dob")} />
+                        <FieldError errors={[errors.dob]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.gender}>
+                      <FieldLabel>Gender *</FieldLabel>
+                      <FieldContent>
+                        <Controller
+                          control={control}
+                          name="gender"
+                          render={({ field }) => (
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="female">Female</SelectItem>
+                                <SelectItem value="male">Male</SelectItem>
+                                <SelectItem value="other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <FieldError errors={[errors.gender]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.npiNumber}>
+                      <FieldLabel htmlFor="npiNumber">NPI Number *</FieldLabel>
+                      <FieldContent>
+                        <Input id="npiNumber" {...register("npiNumber")} />
+                        <FieldError errors={[errors.npiNumber]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.primarySpecialty}>
+                      <FieldLabel>Primary Specialty *</FieldLabel>
+                      <FieldContent>
+                        <Controller
+                          control={control}
+                          name="primarySpecialty"
+                          render={({ field }) => (
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select specialty" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {["Emergency Medicine", "Internal Medicine", "Pediatrics", "Orthopedics", "Critical Care"].map(
+                                  (s) => (
+                                    <SelectItem key={s} value={s}>
+                                      {s}
+                                    </SelectItem>
+                                  )
+                                )}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <FieldError errors={[errors.primarySpecialty]} />
+                      </FieldContent>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
+                      <FieldContent>
+                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" {...register("subSpecialty")} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.yearsOfExperience}>
+                      <FieldLabel>Years of Experience *</FieldLabel>
+                      <FieldContent>
+                        <Controller
+                          control={control}
+                          name="yearsOfExperience"
+                          render={({ field }) => (
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {["0-2 Years", "3-5 Years", "6-8 Years", "8-10 Years", "10+ Years"].map((y) => (
+                                  <SelectItem key={y} value={y}>
+                                    {y}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <FieldError errors={[errors.yearsOfExperience]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.employmentType}>
+                      <FieldLabel>Current Employment Type *</FieldLabel>
+                      <FieldContent>
+                        <Controller
+                          control={control}
+                          name="employmentType"
+                          render={({ field }) => (
+                            <Select value={field.value} onValueChange={field.onChange}>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Independent / Locum">Independent / Locum</SelectItem>
+                                <SelectItem value="W2 Contract">W2 Contract</SelectItem>
+                                <SelectItem value="Full-Time">Full-Time</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
+                        <FieldError errors={[errors.employmentType]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <Field data-invalid={!!errors.preferredLocations}>
+                    <FieldLabel htmlFor="preferredLocations">Preferred Locations *</FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="preferredLocations"
+                        placeholder="New York, NY; Boston, MA"
+                        {...register("preferredLocations")}
+                      />
+                      <FieldError errors={[errors.preferredLocations]} />
+                    </FieldContent>
+                  </Field>
+                </>
+              )}
+
+              {stepIndex === 1 && (
+                <>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.licenseNumber}>
+                      <FieldLabel htmlFor="licenseNumber">Medical License Number *</FieldLabel>
+                      <FieldContent>
+                        <Input id="licenseNumber" {...register("licenseNumber")} />
+                        <FieldError errors={[errors.licenseNumber]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.licenseState}>
+                      <FieldLabel htmlFor="licenseState">Issuing State *</FieldLabel>
+                      <FieldContent>
+                        <Input id="licenseState" placeholder="e.g. NY" {...register("licenseState")} />
+                        <FieldError errors={[errors.licenseState]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                  <Field data-invalid={!!errors.licenseExpiry}>
+                    <FieldLabel htmlFor="licenseExpiry">License Expiry Date *</FieldLabel>
+                    <FieldContent>
+                      <Input id="licenseExpiry" type="date" {...register("licenseExpiry")} />
+                      <FieldError errors={[errors.licenseExpiry]} />
+                    </FieldContent>
+                  </Field>
+                </>
+              )}
+
+              {stepIndex === 2 && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Select the certifications you currently hold.
+                  </p>
+                  {certificationOptions.map((cert) => (
+                    <label
+                      key={cert.key}
+                      className="flex items-center gap-3 rounded-lg border border-border p-3 text-sm"
+                    >
+                      <Checkbox
+                        checked={certifications[cert.key] ?? false}
+                        onCheckedChange={(checked) =>
+                          setCertifications((c) => ({ ...c, [cert.key]: !!checked }))
+                        }
+                      />
+                      {cert.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {stepIndex === 3 && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Upload the required documents (PDF, JPG, PNG — max 10MB).
+                  </p>
+                  {documentChecklist.map((doc) => (
+                    <div
+                      key={doc.key}
+                      className="flex items-center justify-between rounded-lg border border-border p-3"
+                    >
+                      <span className="flex items-center gap-2 text-sm">
+                        <FileText className="size-4 text-muted-foreground" /> {doc.label}
+                      </span>
+                      {uploaded[doc.key] ? (
+                        <span className="flex items-center gap-1 text-xs font-medium text-success">
+                          <CheckCircle2 className="size-3.5" /> Uploaded
+                        </span>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setUploaded((u) => ({ ...u, [doc.key]: true }))}
+                        >
+                          <Upload className="size-3.5" /> Upload
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {stepIndex === 4 && (
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 rounded-xl border border-border bg-muted/30 p-4">
+                    <ShieldCheck className="mt-0.5 size-5 shrink-0 text-brand" />
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Background Check Consent</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        We partner with a third-party provider to run a standard background check.
+                        This is required before you can accept your first shift.
+                      </p>
+                    </div>
+                  </div>
+                  <label className="flex items-start gap-3 text-sm">
+                    <Controller
+                      control={control}
+                      name="backgroundCheckConsent"
+                      render={({ field }) => (
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} className="mt-0.5" />
+                      )}
+                    />
+                    I consent to a background check being performed as part of my onboarding.
+                  </label>
+                  <FieldError errors={[errors.backgroundCheckConsent]} />
+                </div>
+              )}
+
+              {stepIndex === 5 && (
+                <>
+                  <Field data-invalid={!!errors.bankAccountHolder}>
+                    <FieldLabel htmlFor="bankAccountHolder">Account Holder Name *</FieldLabel>
+                    <FieldContent>
+                      <Input id="bankAccountHolder" {...register("bankAccountHolder")} />
+                      <FieldError errors={[errors.bankAccountHolder]} />
+                    </FieldContent>
+                  </Field>
+                  <Field data-invalid={!!errors.bankName}>
+                    <FieldLabel htmlFor="bankName">Bank Name *</FieldLabel>
+                    <FieldContent>
+                      <Input id="bankName" {...register("bankName")} />
+                      <FieldError errors={[errors.bankName]} />
+                    </FieldContent>
+                  </Field>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field data-invalid={!!errors.accountNumber}>
+                      <FieldLabel htmlFor="accountNumber">Account Number *</FieldLabel>
+                      <FieldContent>
+                        <Input id="accountNumber" {...register("accountNumber")} />
+                        <FieldError errors={[errors.accountNumber]} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.routingNumber}>
+                      <FieldLabel htmlFor="routingNumber">Routing Number *</FieldLabel>
+                      <FieldContent>
+                        <Input id="routingNumber" {...register("routingNumber")} />
+                        <FieldError errors={[errors.routingNumber]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
+                </>
+              )}
+
+              {stepIndex === 6 && (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Review your information before submitting for verification.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 rounded-xl border border-border p-4 text-sm sm:grid-cols-2">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Name</p>
+                      <p className="font-medium text-foreground">
+                        {values.firstName} {values.lastName}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Specialty</p>
+                      <p className="font-medium text-foreground">{values.primarySpecialty || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">License Number</p>
+                      <p className="font-medium text-foreground">{values.licenseNumber || "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Documents Uploaded</p>
+                      <p className="font-medium text-foreground">
+                        {uploadedCount} / {documentChecklist.length}
+                      </p>
+                    </div>
+                  </div>
+                  <Textarea placeholder="Anything else you'd like us to know? (optional)" rows={3} />
+                  <label className="flex items-start gap-3 text-sm">
+                    <Controller
+                      control={control}
+                      name="agreeToTerms"
+                      render={({ field }) => (
+                        <Checkbox checked={field.value} onCheckedChange={field.onChange} className="mt-0.5" />
+                      )}
+                    />
+                    I confirm the information provided is accurate and I agree to the Terms of Service.
+                  </label>
+                  <FieldError errors={[errors.agreeToTerms]} />
+                </div>
+              )}
+            </FieldGroup>
+
+            <div className="mt-8 flex items-center justify-between border-t border-border pt-5">
+              <Button type="button" variant="outline" onClick={handleBack} disabled={stepIndex === 0}>
+                <ChevronLeft className="size-4" /> Back
+              </Button>
+              <Button type="button" onClick={handleNext}>
+                {stepIndex === steps.length - 1 ? (
+                  <>
+                    <BadgeCheck className="size-4" /> Submit Application
+                  </>
+                ) : (
+                  <>
+                    Save & Continue <ChevronRight className="size-4" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-6">
+          <Card>
+            <CardContent className="flex flex-col items-center text-center">
+              <Person name={`${values.firstName || "New"} ${values.lastName || "Doctor"}`} />
+              <p className="mt-2 text-xs text-muted-foreground">{values.primarySpecialty || "Specialty pending"}</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="flex flex-col items-center gap-2 text-center">
+              <p className="text-sm font-medium text-foreground">Onboarding Progress</p>
+              <CircularProgress value={progressPct} label="Complete" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent>
+              <p className="mb-3 text-sm font-medium text-foreground">Document Checklist</p>
+              <ul className="space-y-2">
+                {documentChecklist.map((doc) => (
+                  <li key={doc.key} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{doc.label}</span>
+                    {uploaded[doc.key] ? (
+                      <span className="text-xs font-medium text-success">Uploaded</span>
+                    ) : (
+                      <span className="text-xs font-medium text-destructive">Not Uploaded</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
