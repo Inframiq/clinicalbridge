@@ -6,12 +6,11 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Building2, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Field,
   FieldContent,
@@ -22,6 +21,8 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
+import { ROLE_CONFIG, ROLE_HOME, ROLE_ORDER } from "@/lib/roles";
+import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
@@ -68,7 +69,7 @@ function MicrosoftIcon() {
 export function LoginForm() {
   const router = useRouter();
   const { login } = useAuthRole();
-  const [role, setRole] = useState<UserRole>("admin");
+  const [role, setRole] = useState<UserRole>("hospital");
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -83,7 +84,7 @@ export function LoginForm() {
   function completeLogin(chosenRole: UserRole) {
     login(chosenRole);
     toast.success("Signed in successfully");
-    router.push(chosenRole === "admin" ? "/admin/dashboard" : "/doctor/dashboard");
+    router.push(ROLE_HOME[chosenRole]);
   }
 
   function onSubmit() {
@@ -97,16 +98,40 @@ export function LoginForm() {
         <p className="mt-1 text-sm text-muted-foreground">Sign in to your account to continue</p>
       </div>
 
-      <Tabs value={role} onValueChange={(v) => setRole(v as UserRole)} className="mb-6">
-        <TabsList className="w-full">
-          <TabsTrigger value="admin" className="gap-1.5">
-            <Building2 className="size-4" /> Hospital / Clinic
-          </TabsTrigger>
-          <TabsTrigger value="doctor" className="gap-1.5">
-            <Stethoscope className="size-4" /> Doctor
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="mb-6">
+        <p className="mb-2.5 text-xs font-medium text-muted-foreground">I am signing in as</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {ROLE_ORDER.map((value) => {
+            const config = ROLE_CONFIG[value];
+            const Icon = config.icon;
+            const isActive = role === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setRole(value)}
+                aria-pressed={isActive}
+                className={cn(
+                  "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  isActive
+                    ? "border-brand bg-brand-muted text-brand"
+                    : "border-border text-muted-foreground hover:border-brand/40 hover:text-foreground"
+                )}
+              >
+                <Icon className="size-4" />
+                <span
+                  className={cn(
+                    "text-xs leading-tight font-medium",
+                    isActive ? "text-brand" : "text-foreground"
+                  )}
+                >
+                  {config.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <FieldGroup>
@@ -181,10 +206,13 @@ export function LoginForm() {
             </Button>
           </div>
 
-          {role === "doctor" && (
+          {ROLE_CONFIG[role].signupHref && (
             <FieldDescription className="text-center">
               Don&apos;t have an account?{" "}
-              <Link href="/onboarding" className="font-medium text-brand hover:underline">
+              <Link
+                href={ROLE_CONFIG[role].signupHref!}
+                className="font-medium text-brand hover:underline"
+              >
                 Sign up
               </Link>
             </FieldDescription>

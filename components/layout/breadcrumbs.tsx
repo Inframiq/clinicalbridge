@@ -22,7 +22,7 @@ function toLabel(segment: string) {
 export function Breadcrumbs({ rootLabel }: { rootLabel: string }) {
   const pathname = usePathname() ?? "";
   const segments = pathname.split("/").filter(Boolean);
-  // segments[0] is the role ("admin" | "doctor"), replace with rootLabel
+  // segments[0] is the role route segment (e.g. "hospital" | "locum"), replace with rootLabel
   const rest = segments.slice(1);
 
   return (

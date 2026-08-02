@@ -32,6 +32,8 @@ import { Stepper } from "@/components/forms/stepper";
 import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
+import { useDoctors } from "@/hooks/use-doctors";
+import type { Doctor } from "@/types";
 
 const schema = z.object({
   firstName: z.string().min(1, "Required"),
@@ -103,6 +105,7 @@ const certificationOptions = [
 export function OnboardingWizard() {
   const router = useRouter();
   const { login } = useAuthRole();
+  const { registerSelfDoctor } = useDoctors();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
   const [certifications, setCertifications] = useState<Record<string, boolean>>({
@@ -152,9 +155,29 @@ export function OnboardingWizard() {
     const valid = fields.length === 0 ? true : await trigger(fields);
     if (!valid) return;
     if (stepIndex === steps.length - 1) {
-      login("doctor");
+      registerSelfDoctor(
+        {
+          firstName: values.firstName,
+          lastName: values.lastName,
+          email: values.email,
+          phone: values.phone,
+          specialty: values.primarySpecialty,
+          subSpecialty: values.subSpecialty || undefined,
+          licenseNumber: values.licenseNumber,
+          licenseExpiry: values.licenseExpiry,
+          npiNumber: values.npiNumber,
+          yearsOfExperience: values.yearsOfExperience,
+          employmentType: values.employmentType as Doctor["employmentType"],
+          preferredLocations: values.preferredLocations
+            .split(";")
+            .map((l) => l.trim())
+            .filter(Boolean),
+        },
+        "locum"
+      );
+      login("locum_doctor");
       toast.success("Application submitted! Your profile is now under review.");
-      router.push("/doctor/dashboard");
+      router.push("/locum/dashboard");
       return;
     }
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));

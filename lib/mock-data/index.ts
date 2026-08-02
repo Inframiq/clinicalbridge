@@ -5,3 +5,6 @@ export * from "./payments";
 export * from "./analytics";
 export * from "./notifications";
 export * from "./organizations";
+export * from "./departments";
+export * from "./replacement-requests";
+export * from "./ratings";

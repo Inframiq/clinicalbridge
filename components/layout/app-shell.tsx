@@ -8,6 +8,7 @@ import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { useAuthRole } from "@/context/auth-provider";
 import type { NavItem } from "@/lib/nav-config";
+import { ROLE_HOME } from "@/lib/roles";
 import type { UserRole } from "@/types";
 
 interface AppShellProps {
@@ -17,7 +18,7 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-// DEV-ONLY bypass: skips the login screen entirely so /admin/* and /doctor/*
+// DEV-ONLY bypass: skips the login screen entirely so any /<role>/* section
 // can be opened directly while building/testing. `NODE_ENV` is inlined at
 // build time, so this branch (and the login/role-check it replaces) is
 // dead-code-eliminated from production bundles — never ships live.
@@ -48,7 +49,7 @@ export function AppShell({ navItems, rootLabel, requiredRole, children }: AppShe
     }
 
     if (role !== null) {
-      router.replace(role === "admin" ? "/admin/dashboard" : "/doctor/dashboard");
+      router.replace(ROLE_HOME[role]);
     } else {
       router.replace("/login");
     }

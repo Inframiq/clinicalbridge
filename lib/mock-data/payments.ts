@@ -83,6 +83,28 @@ export const postShiftRecords: PostShiftRecord[] = [
     "disputed",
     "2025-05-21T19:00:00"
   ),
+  derive(
+    "ps-006",
+    "shift-er-past-012",
+    "doc-sarah-johnson",
+    8,
+    120,
+    "payment_processed",
+    "2025-05-18T16:15:00",
+    "2025-05-19T09:00:00",
+    "2025-05-19T09:00:00"
+  ),
+  derive(
+    "ps-007",
+    "shift-gen-past-014",
+    "doc-alex-nguyen",
+    8,
+    100,
+    "payment_processed",
+    "2025-05-16T16:15:00",
+    "2025-05-17T09:00:00",
+    "2025-05-17T09:00:00"
+  ),
 ];
 
 export function getPaymentForShift(shiftId: string) {

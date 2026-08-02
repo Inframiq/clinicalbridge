@@ -1,4 +1,11 @@
-import type { Doctor } from "@/types";
+import type { Doctor, DoctorVerification } from "@/types";
+
+const FULLY_VERIFIED: DoctorVerification = {
+  medicalCouncil: true,
+  degree: true,
+  identity: true,
+  hospitalApproval: true,
+};
 
 export const doctors: Doctor[] = [
   {
@@ -21,6 +28,9 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 0.8,
     matchScore: 95,
+    doctorKind: "locum",
+    department: "Emergency Department",
+    verification: FULLY_VERIFIED,
   },
   {
     id: "doc-emily-roberts",
@@ -33,7 +43,7 @@ export const doctors: Doctor[] = [
     licenseExpiry: "2026-03-15",
     npiNumber: "1234567891",
     yearsOfExperience: "6-8 Years",
-    employmentType: "Independent / Locum",
+    employmentType: "W2 Contract",
     preferredLocations: ["New York, NY"],
     verified: true,
     email: "emily.roberts@healthmail.com",
@@ -41,6 +51,9 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 0.8,
     matchScore: 95,
+    doctorKind: "working",
+    department: "Emergency Department",
+    verification: FULLY_VERIFIED,
   },
   {
     id: "doc-daniel-kim",
@@ -61,6 +74,9 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.2,
     matchScore: 95,
+    doctorKind: "locum",
+    department: "Emergency Department",
+    verification: FULLY_VERIFIED,
   },
   {
     id: "doc-james-wilson",
@@ -81,6 +97,9 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.5,
     matchScore: 94,
+    doctorKind: "locum",
+    department: "Orthopedics",
+    verification: FULLY_VERIFIED,
   },
   {
     id: "doc-michael-lee",
@@ -99,6 +118,9 @@ export const doctors: Doctor[] = [
     email: "michael.lee@healthmail.com",
     phone: "+1 (555) 123-4571",
     status: "active",
+    doctorKind: "locum",
+    department: "Intensive Care Unit",
+    verification: FULLY_VERIFIED,
   },
   {
     id: "doc-priya-shah",
@@ -117,7 +139,80 @@ export const doctors: Doctor[] = [
     email: "priya.shah@healthmail.com",
     phone: "+1 (555) 123-4572",
     status: "active",
+    doctorKind: "locum",
+    department: "Pediatrics Unit",
+    verification: FULLY_VERIFIED,
+  },
+  {
+    id: "doc-alex-nguyen",
+    firstName: "Alex",
+    lastName: "Nguyen",
+    specialty: "General Medicine",
+    rating: 4.6,
+    reviewCount: 12,
+    licenseNumber: "NY-723456",
+    licenseExpiry: "2027-02-01",
+    npiNumber: "1234567896",
+    yearsOfExperience: "0-2 Years",
+    employmentType: "Full-Time",
+    preferredLocations: ["New York, NY"],
+    verified: true,
+    email: "alex.nguyen@healthmail.com",
+    phone: "+1 (555) 123-4573",
+    status: "active",
+    doctorKind: "intern",
+    department: "General Medicine",
+    verification: FULLY_VERIFIED,
+  },
+  {
+    id: "doc-rachel-adams",
+    firstName: "Rachel",
+    lastName: "Adams",
+    specialty: "ER Physician",
+    rating: 0,
+    reviewCount: 0,
+    licenseNumber: "NY-823456",
+    licenseExpiry: "2027-06-15",
+    npiNumber: "1234567897",
+    yearsOfExperience: "2-4 Years",
+    employmentType: "W2 Contract",
+    preferredLocations: ["New York, NY"],
+    verified: false,
+    email: "rachel.adams@healthmail.com",
+    phone: "+1 (555) 123-4574",
+    status: "onboarding",
+    doctorKind: "working",
+    department: "Emergency Department",
+    verification: { medicalCouncil: true, degree: true, identity: false, hospitalApproval: false },
+  },
+  {
+    id: "doc-priya-shah-leave",
+    firstName: "Nina",
+    lastName: "Osei",
+    specialty: "Pediatrician",
+    rating: 4.7,
+    reviewCount: 56,
+    licenseNumber: "NY-923456",
+    licenseExpiry: "2026-08-20",
+    npiNumber: "1234567898",
+    yearsOfExperience: "6-8 Years",
+    employmentType: "W2 Contract",
+    preferredLocations: ["New York, NY"],
+    verified: true,
+    email: "nina.osei@healthmail.com",
+    phone: "+1 (555) 123-4575",
+    status: "inactive",
+    doctorKind: "working",
+    department: "Pediatrics Unit",
+    verification: FULLY_VERIFIED,
   },
 ];
 
+/** The signed-in Locum Doctor's identity. */
 export const currentDoctor = doctors[0];
+/** The signed-in Working Doctor's identity. */
+export const currentWorkingDoctor = doctors[1];
+/** The signed-in Locum Doctor's identity (alias, kept for role-name clarity). */
+export const currentLocumDoctor = doctors[0];
+/** The signed-in Intern's identity. */
+export const currentIntern = doctors[6];

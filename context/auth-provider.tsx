@@ -2,7 +2,12 @@
 
 import * as React from "react";
 import type { UserRole } from "@/types";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import {
+  currentLocumDoctor,
+  currentWorkingDoctor,
+  currentIntern,
+} from "@/lib/mock-data/doctors";
+import { currentFacility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 
 interface AuthSession {
@@ -28,15 +33,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = React.useCallback(
     (role: UserRole) => {
-      if (role === "doctor") {
-        setSession({
-          role,
-          name: `Dr. ${currentDoctor.firstName} ${currentDoctor.lastName}`,
-          title: currentDoctor.specialty,
-        });
-      } else {
-        setSession({ role, name: "Admin User", title: "Super Admin" });
-      }
+      const identityByRole: Record<UserRole, { name: string; title: string }> = {
+        hospital: { name: currentFacility.name, title: "Hospital Administrator" },
+        working_doctor: {
+          name: `Dr. ${currentWorkingDoctor.firstName} ${currentWorkingDoctor.lastName}`,
+          title: currentWorkingDoctor.specialty,
+        },
+        locum_doctor: {
+          name: `Dr. ${currentLocumDoctor.firstName} ${currentLocumDoctor.lastName}`,
+          title: currentLocumDoctor.specialty,
+        },
+        intern: {
+          name: `Dr. ${currentIntern.firstName} ${currentIntern.lastName}`,
+          title: `Intern — ${currentIntern.specialty}`,
+        },
+        super_admin: { name: "Platform Admin", title: "Super Admin" },
+      };
+      setSession({ role, ...identityByRole[role] });
     },
     [setSession]
   );

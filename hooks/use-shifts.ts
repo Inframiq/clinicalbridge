@@ -3,6 +3,7 @@
 import { useAppData } from "@/context/app-data-provider";
 
 export function useShifts() {
-  const { shifts, broadcastShift, updateShiftStatus } = useAppData();
-  return { shifts, broadcastShift, updateShiftStatus };
+  const { shifts, broadcastShift, updateShiftStatus, confirmShiftAttendance, respondToShiftAssignment } =
+    useAppData();
+  return { shifts, broadcastShift, updateShiftStatus, confirmShiftAttendance, respondToShiftAssignment };
 }

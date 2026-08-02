@@ -19,16 +19,11 @@ import {
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useShifts } from "@/hooks/use-shifts";
 import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
+import { DEPARTMENTS } from "@/lib/mock-data/departments";
 import { formatCurrency, to12Hour } from "@/lib/format";
 import type { ExperienceLevel, ShiftType } from "@/types";
 
-const departments = [
-  "Emergency Department",
-  "Intensive Care Unit",
-  "Pediatrics Unit",
-  "Orthopedics",
-  "General Medicine",
-];
+const departments: string[] = [...DEPARTMENTS];
 
 const shiftTypes: ShiftType[] = [
   "Emergency (Level 1)",

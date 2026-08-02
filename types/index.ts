@@ -18,6 +18,30 @@ export interface GeoLocation {
   lng: number;
 }
 
+export type DoctorKind = "working" | "locum" | "intern";
+
+export interface DoctorVerification {
+  medicalCouncil: boolean;
+  degree: boolean;
+  identity: boolean;
+  hospitalApproval: boolean;
+}
+
+export interface HospitalVerification {
+  governmentRegistration: boolean;
+  medicalLicense: boolean;
+  taxRegistration: boolean;
+  accreditation: boolean;
+  authorizedSignatory: boolean;
+}
+
+export interface ReplacementPreferences {
+  preferredTravelDistanceMiles?: number;
+  preferredDepartments?: string[];
+  maxHoursPerWeek?: number;
+  availableDays?: string[];
+}
+
 export interface Doctor {
   id: string;
   firstName: string;
@@ -39,6 +63,11 @@ export interface Doctor {
   status: "active" | "onboarding" | "inactive";
   distanceMiles?: number;
   matchScore?: number;
+  doctorKind?: DoctorKind;
+  department?: string;
+  verification?: DoctorVerification;
+  replacementPreferences?: ReplacementPreferences;
+  languages?: string[];
 }
 
 export type ShiftType =
@@ -78,6 +107,13 @@ export interface Shift {
   totalMinutes?: number;
   breakMinutes?: number;
   matchStats?: MatchStats;
+  attendanceConfirmed?: boolean;
+  applicationDeadline?: string;
+  requiredQualification?: string;
+  supervisorName?: string;
+  emergencyContact?: string;
+  internSupervisionRequired?: boolean;
+  replacementStage?: "locum_only" | "open_to_intern";
 }
 
 export type ApplicationStatus =
@@ -155,7 +191,12 @@ export interface Patient {
   lastUpdate: string;
 }
 
-export type UserRole = "admin" | "doctor";
+export type UserRole =
+  | "hospital"
+  | "working_doctor"
+  | "locum_doctor"
+  | "intern"
+  | "super_admin";
 
 export interface EarningsPoint {
   date: string;
@@ -189,4 +230,42 @@ export interface FacilitySummary {
   id: string;
   name: string;
   shiftsWorked: number;
+}
+
+export type PreferredReplacementType = "Locum Doctor" | "Intern" | "Both";
+
+export type ReplacementRequestStatus = "pending" | "approved" | "rejected" | "filled";
+
+export interface ReplacementRequest {
+  id: string;
+  shiftId: string;
+  requestingDoctorId: string;
+  reason: string;
+  preferredReplacementType: PreferredReplacementType;
+  hourlyCompensation: number;
+  notes?: string;
+  status: ReplacementRequestStatus;
+  requestedAt: string;
+  reviewedAt?: string;
+}
+
+export interface SavedShift {
+  id: string;
+  shiftId: string;
+  doctorId: string;
+  savedAt: string;
+}
+
+export type RatingDirection = "hospital_to_doctor" | "doctor_to_hospital";
+
+export interface Rating {
+  id: string;
+  shiftId: string;
+  direction: RatingDirection;
+  doctorId: string;
+  facilityId: string;
+  categories: Record<string, number>;
+  overallScore: number;
+  comment?: string;
+  createdAt: string;
 }
