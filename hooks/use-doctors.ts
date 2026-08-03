@@ -1,0 +1,22 @@
+"use client";
+
+import { useAppData } from "@/context/app-data-provider";
+
+export function useDoctors() {
+  const {
+    doctors,
+    registerDoctor,
+    registerSelfDoctor,
+    updateDoctorVerification,
+    updateDoctorProfile,
+    assignDoctorToShift,
+  } = useAppData();
+  return {
+    doctors,
+    registerDoctor,
+    registerSelfDoctor,
+    updateDoctorVerification,
+    updateDoctorProfile,
+    assignDoctorToShift,
+  };
+}
