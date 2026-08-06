@@ -43,8 +43,9 @@ interface AuthContextValue extends AuthSession {
     password: string,
     role: UserRole,
     fullName: string
-  ) => Promise<{ error: Error | null; user: User | null }>;
+  ) => Promise<{ error: Error | null; user: User | null; hasSession: boolean }>;
   signInWithOAuth: (provider: "google" | "azure") => Promise<{ error: Error | null }>;
+  resendConfirmationEmail: (email: string) => Promise<{ error: Error | null }>;
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<UserProfile | null>;
@@ -297,26 +298,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           },
         });
 
-
         if (error) {
           console.error("Supabase Signup Error:", error);
-          console.log("Signup Response:", data);
 
           return {
             error,
             user: null,
+            hasSession: false,
           };
         }
-        // The database trigger "on_auth_user_created" automatically creates the profile row 
+        // The database trigger "on_auth_user_created" automatically creates the profile row
         // with the correct role, full_name, and verification status, bypassing RLS.
 
-        return { error: null, user: data.user };
+        // If email confirmation is enabled, signUp() returns a user but no session
+        // until the user clicks the confirmation link in their email.
+        if (data.user && data.session) {
+          setSession((prev) => ({
+            ...prev,
+            user: data.user,
+            role,
+            name: fullName || data.user!.email?.split("@")[0] || "User",
+            title: role.replace("_", " ").toUpperCase(),
+          }));
+        }
+
+        return { error: null, user: data.user, hasSession: !!data.session };
       } catch (err: unknown) {
         const error = err instanceof Error ? err : new Error(String(err));
-        return { error, user: null };
+        return { error, user: null, hasSession: false };
       }
     },
-    [supabase]
+    [supabase, setSession]
   );
 
   const signInWithOAuth = React.useCallback(
@@ -329,6 +341,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             redirectTo: redirectUrl,
           },
         });
+        return { error: error ? new Error(error.message) : null };
+      } catch (err: unknown) {
+        return { error: err instanceof Error ? err : new Error(String(err)) };
+      }
+    },
+    [supabase]
+  );
+
+  const resendConfirmationEmail = React.useCallback(
+    async (email: string) => {
+      try {
+        const { error } = await supabase.auth.resend({ type: "signup", email });
         return { error: error ? new Error(error.message) : null };
       } catch (err: unknown) {
         return { error: err instanceof Error ? err : new Error(String(err)) };
@@ -381,6 +405,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithSupabase,
       signUpWithSupabase,
       signInWithOAuth,
+      resendConfirmationEmail,
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,
@@ -393,6 +418,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       signInWithSupabase,
       signUpWithSupabase,
       signInWithOAuth,
+      resendConfirmationEmail,
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,

@@ -105,10 +105,16 @@ export function SignupForm() {
 
   async function onSubmit(data: FormValues) {
     if (data.email && data.password && data.fullName) {
-      const { error, user } = await signUpWithSupabase(data.email, data.password, role, data.fullName);
-      
+      const { error, user, hasSession } = await signUpWithSupabase(data.email, data.password, role, data.fullName);
+
       if (error) {
         toast.error(error.message || "Failed to sign up");
+        return;
+      }
+
+      if (user && !hasSession) {
+        toast.info("Check your inbox to confirm your email before continuing.");
+        router.push(`/verify-email?email=${encodeURIComponent(data.email)}&role=${role}`);
         return;
       }
 
