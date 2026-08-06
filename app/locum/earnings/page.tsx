@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CalendarClock, DollarSign, TrendingUp } from "lucide-react";
+import { CalendarClock, IndianRupee, TrendingUp } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
@@ -52,7 +52,7 @@ export default function DoctorEarningsPage() {
     <div>
       <PageHeader title="Earnings" description="Track your income across all completed shifts." />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Total Earnings" value={formatCurrency(totalEarnings || 9640, { decimals: false })} icon={DollarSign} iconTone="success" delta={{ value: "+15%", positive: true }} />
+        <StatCard label="Total Earnings" value={formatCurrency(totalEarnings || 9640, { decimals: false })} icon={IndianRupee} iconTone="success" delta={{ value: "+15%", positive: true }} />
         <StatCard label="Avg. Per Shift" value={formatCurrency(avgPerShift || 400, { decimals: false })} icon={TrendingUp} iconTone="brand" />
         <StatCard label="Pending Payout" value={formatCurrency(pendingPayout, { decimals: false })} icon={CalendarClock} iconTone="warning" />
       </div>
@@ -62,7 +62,7 @@ export default function DoctorEarningsPage() {
             data={earningsSeries}
             xKey="date"
             compactYAxis
-            series={[{ key: "earnings", label: "Earnings (USD)", color: "var(--chart-1)" }]}
+            series={[{ key: "earnings", label: "Earnings (INR)", color: "var(--chart-1)" }]}
           />
         </ChartCard>
       </div>

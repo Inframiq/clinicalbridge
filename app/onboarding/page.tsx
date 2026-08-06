@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Building2, Briefcase, GraduationCap, ArrowRight } from "lucide-react";
+import { Building2, Stethoscope, Briefcase, GraduationCap, ArrowRight } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { PLATFORM } from "@/lib/config/brand";
 
@@ -10,22 +10,32 @@ export const metadata: Metadata = {
 
 const choices = [
   {
-    href: "/onboarding/hospital",
+    href: "/signup?role=hospital",
     icon: Building2,
     title: "Hospital / Clinic",
     description: "Register your facility to post shifts and manage staff.",
+    role: "hospital",
   },
   {
-    href: "/onboarding/locum",
+    href: "/signup?role=working_doctor",
+    icon: Stethoscope,
+    title: "Working Doctor",
+    description: "Manage facility shifts and submit replacement requests.",
+    role: "working_doctor",
+  },
+  {
+    href: "/signup?role=locum_doctor",
     icon: Briefcase,
     title: "Locum Doctor",
     description: "Browse and apply for open shifts across hospitals.",
+    role: "locum_doctor",
   },
   {
-    href: "/onboarding/intern",
+    href: "/signup?role=intern",
     icon: GraduationCap,
     title: "Intern",
     description: "Access supervised replacement opportunities.",
+    role: "intern",
   },
 ];
 
@@ -42,17 +52,17 @@ export default function OnboardingChooserPage() {
           </Link>
         </div>
       </header>
-      <main className="mx-auto max-w-3xl px-6 py-16">
+      <main className="mx-auto max-w-4xl px-6 py-16">
         <div className="mb-10 text-center">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Who are you registering as?
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Choose the option that matches your role to get started.
+            Select your account type to proceed with registration and onboarding.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {choices.map((choice) => {
             const Icon = choice.icon;
             return (

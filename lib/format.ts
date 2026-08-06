@@ -1,7 +1,12 @@
-export function formatCurrency(amount: number, options?: { decimals?: boolean }): string {
-  return new Intl.NumberFormat("en-US", {
+export function formatCurrency(
+  amount: number,
+  options?: { decimals?: boolean; currency?: "USD" | "INR" }
+): string {
+  const currency = options?.currency ?? "INR";
+  const locale = currency === "INR" ? "en-IN" : "en-US";
+  return new Intl.NumberFormat(locale, {
     style: "currency",
-    currency: "USD",
+    currency,
     minimumFractionDigits: options?.decimals === false ? 0 : 2,
     maximumFractionDigits: options?.decimals === false ? 0 : 2,
   }).format(amount);

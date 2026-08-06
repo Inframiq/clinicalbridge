@@ -10,6 +10,7 @@ import { Eye, EyeOff, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { useAuthRole } from "@/context/auth-provider";
 
 const schema = z
   .object({
@@ -25,6 +26,7 @@ type FormValues = z.infer<typeof schema>;
 
 export function ResetPasswordForm() {
   const router = useRouter();
+  const { updatePassword } = useAuthRole();
   const [showPassword, setShowPassword] = useState(false);
 
   const {
@@ -36,7 +38,12 @@ export function ResetPasswordForm() {
     defaultValues: { password: "", confirmPassword: "" },
   });
 
-  function onSubmit() {
+  async function onSubmit(data: FormValues) {
+    const { error } = await updatePassword(data.password);
+    if (error) {
+      toast.error(`Password update error: ${error.message}`);
+      return;
+    }
     toast.success("Password reset successfully. Please sign in.");
     router.push("/login");
   }

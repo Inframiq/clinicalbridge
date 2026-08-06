@@ -61,14 +61,22 @@ function MicrosoftIcon() {
       <path fill="#f35325" d="M1 1h10v10H1z" />
       <path fill="#81bc06" d="M12 1h10v10H12z" />
       <path fill="#05a6f0" d="M1 12h10v10H1z" />
-      <path fill="#ffba08" d="M12 12h10v10H12z" />
+      <path fill="#ffba08" d="M12 12h10v10H1z" />
     </svg>
   );
 }
 
+const roleOnboardingPaths: Record<UserRole, string> = {
+  hospital: "/onboarding/hospital",
+  working_doctor: "/onboarding/working-doctor",
+  locum_doctor: "/onboarding/locum",
+  intern: "/onboarding/intern",
+  super_admin: "/super-admin/dashboard",
+};
+
 export function LoginForm() {
   const router = useRouter();
-  const { login } = useAuthRole();
+  const { login, signInWithSupabase, signInWithOAuth } = useAuthRole();
   const [role, setRole] = useState<UserRole>("hospital");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -81,14 +89,65 @@ export function LoginForm() {
     defaultValues: { email: "", password: "" },
   });
 
-  function completeLogin(chosenRole: UserRole) {
-    login(chosenRole);
+  function routeBasedOnStatus(userRole: UserRole, completedOnboarding: boolean, verificationStatus: string) {
+    if (!completedOnboarding || verificationStatus === "Needs Changes") {
+      toast.info("Please complete your onboarding profile.");
+      router.push(roleOnboardingPaths[userRole] || "/onboarding");
+      return;
+    }
+
+    if (verificationStatus === "Submitted") {
+      toast.info("Your account registration is waiting for approval.");
+      router.push("/verification/status?status=Submitted");
+      return;
+    }
+
+    if (verificationStatus === "Under Review") {
+      toast.info("Your application review is currently in progress.");
+      router.push("/verification/status?status=UnderReview");
+      return;
+    }
+
+    if (verificationStatus === "Rejected") {
+      toast.error("Your registration application was rejected.");
+      router.push("/verification/status?status=Rejected");
+      return;
+    }
+
     toast.success("Signed in successfully");
-    router.push(ROLE_HOME[chosenRole]);
+    router.push(ROLE_HOME[userRole]);
   }
 
-  function onSubmit() {
-    completeLogin(role);
+  async function onSubmit(data: FormValues) {
+    if (data.email && data.password) {
+      const { error, profile } = await signInWithSupabase(data.email, data.password, role);
+      
+      if (error) {
+        toast.error(error.message || "Failed to sign in with Supabase Auth");
+        return;
+      }
+
+      if (profile) {
+        routeBasedOnStatus(
+          profile.role,
+          profile.completed_onboarding ?? false,
+          profile.verification_status || "Pending"
+        );
+        return;
+      }
+    }
+
+    // Fallback demo mode login
+    login(role);
+    toast.success("Signed in (demo mode)");
+    router.push(ROLE_HOME[role]);
+  }
+
+  async function handleOAuth(provider: "google" | "azure") {
+    const { error } = await signInWithOAuth(provider);
+    if (error) {
+      toast.error(`OAuth login error: ${error.message}`);
+    }
   }
 
   return (
@@ -198,25 +257,23 @@ export function LoginForm() {
           <FieldSeparator>or continue with</FieldSeparator>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button type="button" variant="outline" onClick={() => completeLogin(role)}>
+            <Button type="button" variant="outline" onClick={() => handleOAuth("google")}>
               <GoogleIcon /> Google
             </Button>
-            <Button type="button" variant="outline" onClick={() => completeLogin(role)}>
+            <Button type="button" variant="outline" onClick={() => handleOAuth("azure")}>
               <MicrosoftIcon /> Microsoft
             </Button>
           </div>
 
-          {ROLE_CONFIG[role].signupHref && (
-            <FieldDescription className="text-center">
-              Don&apos;t have an account?{" "}
-              <Link
-                href={ROLE_CONFIG[role].signupHref!}
-                className="font-medium text-brand hover:underline"
-              >
-                Sign up
-              </Link>
-            </FieldDescription>
-          )}
+          <FieldDescription className="text-center">
+            Don&apos;t have an account?{" "}
+            <Link
+              href={roleOnboardingPaths[role] || "/onboarding"}
+              className="font-medium text-brand hover:underline"
+            >
+              Sign up as {ROLE_CONFIG[role].label}
+            </Link>
+          </FieldDescription>
         </FieldGroup>
       </form>
     </div>

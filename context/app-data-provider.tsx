@@ -7,6 +7,7 @@ import type {
   PostShiftRecord,
   AppNotification,
   Doctor,
+  DoctorKind,
   DoctorVerification,
   ReplacementRequest,
   SavedShift,
@@ -24,6 +25,16 @@ import {
 } from "@/lib/mock-data";
 import { facilities as seedFacilities, type Facility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import {
+  getShifts,
+  getReplacementRequests,
+  getApplications,
+  createShiftInSupabase,
+  updateShiftStatusInSupabase,
+  createReplacementRequestInSupabase,
+  updateReplacementRequestStatusInSupabase,
+  createApplicationInSupabase,
+} from "@/lib/supabase/services/shifts";
 
 export type NewShiftInput = Pick<
   Shift,
@@ -96,7 +107,7 @@ interface AppDataContextValue {
   requestPaymentChanges: (id: string) => void;
   markNotificationRead: (id: string) => void;
   registerDoctor: (input: NewDoctorInput) => Doctor;
-  registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: "locum" | "intern") => Doctor;
+  registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: DoctorKind) => Doctor;
   registerHospital: (input: NewHospitalInput) => Facility;
   updateDoctorVerification: (id: string, patch: Partial<DoctorVerification>) => void;
   updateDoctorProfile: (
@@ -170,6 +181,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const [ratings, setRatings] = useLocalStorageState<Rating[]>("lt-ratings", seedRatings);
   const [facilities, setFacilities] = useLocalStorageState<Facility[]>("lt-facilities", seedFacilities);
 
+  React.useEffect(() => {
+    async function syncSupabaseData() {
+      try {
+        const [fetchedShifts, fetchedReplacements, fetchedApps] = await Promise.all([
+          getShifts(),
+          getReplacementRequests(),
+          getApplications(),
+        ]);
+        if (fetchedShifts.length > 0) setShifts(fetchedShifts);
+        if (fetchedReplacements.length > 0) setReplacementRequests(fetchedReplacements);
+        if (fetchedApps.length > 0) setApplications(fetchedApps);
+      } catch (err) {
+        console.warn("Supabase initial sync error:", err);
+      }
+    }
+    syncSupabaseData();
+  }, []);
+
   const broadcastShift = React.useCallback(
     (input: NewShiftInput) => {
       const newShift: Shift = {
@@ -184,6 +213,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         },
       };
       setShifts((prev) => [newShift, ...prev]);
+      createShiftInSupabase(newShift);
       return newShift;
     },
     [setShifts]
@@ -192,6 +222,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const updateShiftStatus = React.useCallback(
     (id: string, status: Shift["status"]) => {
       setShifts((prev) => prev.map((s) => (s.id === id ? { ...s, status } : s)));
+      updateShiftStatusInSupabase(id, status);
     },
     [setShifts]
   );
@@ -207,17 +238,16 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const applyToShift = React.useCallback(
     (shiftId: string, doctorId: string) => {
-      setApplications((prev) => [
-        {
-          id: `app-${Date.now()}`,
-          shiftId,
-          doctorId,
-          status: "in_review",
-          appliedAt: new Date().toISOString(),
-          matchScorePct: 90,
-        },
-        ...prev,
-      ]);
+      const newApp = {
+        id: `app-${Date.now()}`,
+        shiftId,
+        doctorId,
+        status: "in_review" as const,
+        appliedAt: new Date().toISOString(),
+        matchScorePct: 90,
+      };
+      setApplications((prev) => [newApp, ...prev]);
+      createApplicationInSupabase(newApp);
     },
     [setApplications]
   );
@@ -299,7 +329,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const registerSelfDoctor = React.useCallback(
-    (input: NewSelfDoctorInput, doctorKind: "locum" | "intern") => {
+    (input: NewSelfDoctorInput, doctorKind: DoctorKind) => {
       const newDoctor: Doctor = {
         id: `doc-${Date.now()}`,
         avatarUrl: undefined,
@@ -420,6 +450,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...input,
       };
       setReplacementRequests((prev) => [newRequest, ...prev]);
+      createReplacementRequestInSupabase(newRequest);
       return newRequest;
     },
     [setReplacementRequests]

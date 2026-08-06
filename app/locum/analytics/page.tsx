@@ -8,9 +8,9 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock,
-  DollarSign,
   FolderOpen,
   Heart,
+  IndianRupee,
   Lightbulb,
   Star,
   Trophy,
@@ -66,11 +66,11 @@ export default function DoctorAnalyticsPage() {
     () => [
       { accessorKey: "title", header: "Shift" },
       { accessorKey: "facilityName", header: "Facility" },
-      { accessorKey: "date", header: "Date", cell: ({ row }) => formatDate(row.original.date) },
+      { accessorKey: "date", header: "Date", cell: ({ row }: { row: { original: Shift } }) => formatDate(row.original.date) },
       {
         id: "status",
         header: "Status",
-        cell: ({ row }) => {
+        cell: ({ row }: { row: { original: Shift } }) => {
           const meta = shiftStatusMeta[row.original.status];
           return <StatusBadge label={meta.label} tone={meta.tone} />;
         },
@@ -81,13 +81,13 @@ export default function DoctorAnalyticsPage() {
 
   const earningsColumns: ColumnDef<JoinedPostShiftRecord>[] = useMemo(
     () => [
-      { id: "shift", header: "Shift", accessorFn: (r) => r.shift?.title ?? "", cell: ({ row }) => row.original.shift?.title },
+      { id: "shift", header: "Shift", accessorFn: (r: JoinedPostShiftRecord) => r.shift?.title ?? "", cell: ({ row }: { row: { original: JoinedPostShiftRecord } }) => row.original.shift?.title },
       { accessorKey: "hours", header: "Hours" },
-      { accessorKey: "netPayout", header: "Payout", cell: ({ row }) => formatCurrency(row.original.netPayout) },
+      { accessorKey: "netPayout", header: "Payout", cell: ({ row }: { row: { original: JoinedPostShiftRecord } }) => formatCurrency(row.original.netPayout) },
       {
         id: "status",
         header: "Status",
-        cell: ({ row }) => {
+        cell: ({ row }: { row: { original: JoinedPostShiftRecord } }) => {
           const meta = payoutStatusMeta[row.original.status];
           return <StatusBadge label={meta.label} tone={meta.tone} />;
         },
@@ -101,13 +101,13 @@ export default function DoctorAnalyticsPage() {
       {
         id: "shift",
         header: "Shift",
-        accessorFn: (r) => shifts.find((s) => s.id === r.shiftId)?.title ?? "",
+        accessorFn: (r: Application) => shifts.find((s) => s.id === r.shiftId)?.title ?? "",
       },
-      { accessorKey: "matchScorePct", header: "Match Score", cell: ({ row }) => `${row.original.matchScorePct}%` },
+      { accessorKey: "matchScorePct", header: "Match Score", cell: ({ row }: { row: { original: Application } }) => `${row.original.matchScorePct}%` },
       {
         id: "status",
         header: "Status",
-        cell: ({ row }) => {
+        cell: ({ row }: { row: { original: Application } }) => {
           const meta = applicationStatusMeta[row.original.status];
           return <StatusBadge label={meta.label} tone={meta.tone} />;
         },
@@ -141,7 +141,7 @@ export default function DoctorAnalyticsPage() {
               { label: "Total Shifts", value: String(myShifts.length || 28), icon: CalendarCheck },
               { label: "Completed Shifts", value: String(myPayments.length || 24), icon: CheckCircle2 },
               { label: "Total Hours", value: (totalHours || 192).toFixed(0), icon: Clock },
-              { label: "Total Earnings", value: formatCurrency(totalEarnings || 9640, { decimals: false }), icon: DollarSign },
+              { label: "Total Earnings", value: formatCurrency(totalEarnings || 9640, { decimals: false }), icon: IndianRupee },
               { label: "Average Rating", value: currentDoctor.rating.toFixed(1), icon: Star },
               { label: "Facilities Worked", value: String(facilities.length), icon: Building2 },
             ]}
@@ -181,7 +181,7 @@ export default function DoctorAnalyticsPage() {
               xKey="date"
               compactYAxis
               series={[
-                { key: "earnings", label: "Earnings (USD)", color: "var(--chart-1)" },
+                { key: "earnings", label: "Earnings (INR)", color: "var(--chart-1)" },
                 { key: "hours", label: "Hours Worked", color: "var(--chart-3)" },
               ]}
             />

@@ -8,7 +8,7 @@ import {
   CalendarCheck,
   ClipboardList,
   Clock3,
-  DollarSign,
+  IndianRupee,
   Star,
   Store,
   UserCheck,
@@ -90,7 +90,7 @@ export default function DoctorDashboardPage() {
         <StatCard
           label="This Week's Earnings"
           value={formatCurrency(thisWeekEarnings, { decimals: false })}
-          icon={DollarSign}
+          icon={IndianRupee}
           iconTone="success"
           delta={{ value: "+15%", positive: true }}
         />
@@ -178,7 +178,7 @@ export default function DoctorDashboardPage() {
             data={earningsSeries}
             xKey="date"
             compactYAxis
-            series={[{ key: "earnings", label: "Earnings (USD)", color: "var(--chart-1)" }]}
+            series={[{ key: "earnings", label: "Earnings (INR)", color: "var(--chart-1)" }]}
           />
         </ChartCard>
 
