@@ -123,18 +123,16 @@ export function InternOnboardingWizard() {
 
   async function handleFileUpload(key: string, file: File) {
     setUploadingKey(key);
-    console.log(`[Intern Registration] Starting document upload for key '${key}': ${file.name}`);
     const { data: metadata, error } = await uploadDocumentToStorage(file, "intern_docs");
     setUploadingKey(null);
 
     if (error || !metadata) {
-      console.error(`[Intern Registration] Document upload failed for ${file.name}:`, error);
+      console.error(`Document upload failed for ${file.name}:`, error);
       toast.error(error?.message || `Failed to upload ${file.name}`);
       return;
     }
 
     setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
-    console.log(`[Intern Registration] Storage upload succeeded. Path: ${metadata.path}`);
     toast.success(`${file.name} uploaded successfully!`);
   }
 
@@ -146,7 +144,6 @@ export function InternOnboardingWizard() {
     if (stepIndex === steps.length - 1) {
       if (isSubmitting) return;
       setIsSubmitting(true);
-      console.log("[Intern Registration] Submitting registration workflow...");
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
@@ -162,8 +159,6 @@ export function InternOnboardingWizard() {
         const userId = user.id;
 
         if (userId) {
-          // 1. Insert intern doctor record into PostgreSQL
-          console.log(`[Intern Registration] Inserting doctor record into PostgreSQL for user ${userId}...`);
           const { error: doctorInsertErr } = await supabase.from("doctors").insert({
             profile_id: userId,
             doctor_kind: "intern",
@@ -182,14 +177,12 @@ export function InternOnboardingWizard() {
           });
 
           if (doctorInsertErr) {
-            console.error("[Intern Registration] Doctors insert DB Error:", doctorInsertErr);
+            console.error("Doctors insert DB Error:", doctorInsertErr);
             toast.error(`Database Insert Failed: ${doctorInsertErr.message}`);
             setIsSubmitting(false);
             return;
           }
 
-          // 2. Update profile onboarding status
-          console.log(`[Intern Registration] Updating profile onboarding status for ${userId}...`);
           const { error: profileUpdateErr } = await supabase.from("profiles").update({
             completed_onboarding: true,
             verification_status: "Submitted",
@@ -198,7 +191,7 @@ export function InternOnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("[Intern Registration] Profile update DB Error:", profileUpdateErr);
+            console.error("Profile update DB Error:", profileUpdateErr);
             toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
             setIsSubmitting(false);
             return;
@@ -229,12 +222,11 @@ export function InternOnboardingWizard() {
 
         clearDraft();
         login("intern");
-        console.log("[Intern Registration] Registration submission completed successfully. Redirecting...");
         toast.success("Application submitted! Your intern application is waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("[Intern Registration] Submission Exception:", err);
+        console.error("Submission Exception:", err);
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);

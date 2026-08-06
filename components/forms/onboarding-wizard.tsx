@@ -182,18 +182,16 @@ export function OnboardingWizard() {
 
   async function handleFileUpload(key: string, file: File) {
     setUploadingKey(key);
-    console.log(`[Locum Doctor Registration] Starting document upload for key '${key}': ${file.name}`);
     const { data: metadata, error } = await uploadDocumentToStorage(file, "locum_docs");
     setUploadingKey(null);
 
     if (error || !metadata) {
-      console.error(`[Locum Doctor Registration] Document upload failed for ${file.name}:`, error);
+      console.error(`Document upload failed for ${file.name}:`, error);
       toast.error(error?.message || `Failed to upload ${file.name}`);
       return;
     }
 
     setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
-    console.log(`[Locum Doctor Registration] Storage upload succeeded. Path: ${metadata.path}`);
     toast.success(`${file.name} uploaded successfully!`);
   }
 
@@ -205,7 +203,6 @@ export function OnboardingWizard() {
     if (stepIndex === steps.length - 1) {
       if (isSubmitting) return;
       setIsSubmitting(true);
-      console.log("[Locum Doctor Registration] Submitting registration workflow...");
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
@@ -223,8 +220,6 @@ export function OnboardingWizard() {
         if (userId) {
           const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
 
-          // 1. Insert doctor record in PostgreSQL
-          console.log(`[Locum Doctor Registration] Inserting doctor record into PostgreSQL for user ${userId}...`);
           const { error: doctorInsertErr } = await supabase.from("doctors").insert({
             profile_id: userId,
             doctor_kind: "locum",
@@ -246,14 +241,12 @@ export function OnboardingWizard() {
           });
 
           if (doctorInsertErr) {
-            console.error("[Locum Doctor Registration] Doctors insert DB Error:", doctorInsertErr);
+            console.error("Doctors insert DB Error:", doctorInsertErr);
             toast.error(`Database Insert Failed: ${doctorInsertErr.message}`);
             setIsSubmitting(false);
             return;
           }
 
-          // 2. Update profile onboarding & verification status
-          console.log(`[Locum Doctor Registration] Updating profile onboarding status for ${userId}...`);
           const { error: profileUpdateErr } = await supabase.from("profiles").update({
             completed_onboarding: true,
             verification_status: "Submitted",
@@ -262,7 +255,7 @@ export function OnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("[Locum Doctor Registration] Profile update DB Error:", profileUpdateErr);
+            console.error("Profile update DB Error:", profileUpdateErr);
             toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
             setIsSubmitting(false);
             return;
@@ -294,12 +287,11 @@ export function OnboardingWizard() {
 
         clearDraft();
         login("locum_doctor");
-        console.log("[Locum Doctor Registration] Registration submission completed successfully. Redirecting...");
         toast.success("Application submitted! Your profile is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("[Locum Doctor Registration] Submission Exception:", err);
+        console.error("Submission Exception:", err);
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);

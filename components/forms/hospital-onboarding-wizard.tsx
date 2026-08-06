@@ -123,18 +123,16 @@ export function HospitalOnboardingWizard() {
 
   async function handleFileUpload(key: string, file: File) {
     setUploadingKey(key);
-    console.log(`[Hospital Registration] Starting document upload for key '${key}': ${file.name}`);
     const { data: metadata, error } = await uploadDocumentToStorage(file, "hospital_docs");
     setUploadingKey(null);
 
     if (error || !metadata) {
-      console.error(`[Hospital Registration] Document upload failed for ${file.name}:`, error);
+      console.error(`Document upload failed for ${file.name}:`, error);
       toast.error(error?.message || `Failed to upload ${file.name}`);
       return;
     }
 
     setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
-    console.log(`[Hospital Registration] Storage upload succeeded. Path: ${metadata.path}`);
     toast.success(`${file.name} uploaded successfully!`);
   }
 
@@ -146,7 +144,6 @@ export function HospitalOnboardingWizard() {
     if (stepIndex === steps.length - 1) {
       if (isSubmitting) return;
       setIsSubmitting(true);
-      console.log("[Hospital Registration] Submitting registration workflow...");
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
@@ -162,8 +159,6 @@ export function HospitalOnboardingWizard() {
         const userId = user.id;
 
         if (userId) {
-          // 1. Insert facility in PostgreSQL
-          console.log(`[Hospital Registration] Inserting facility record into PostgreSQL for user ${userId}...`);
           const { error: facilityInsertErr } = await supabase.from("facilities").insert({
             profile_id: userId,
             name: values.name,
@@ -178,14 +173,12 @@ export function HospitalOnboardingWizard() {
           });
 
           if (facilityInsertErr) {
-            console.error("[Hospital Registration] Facilities insert DB Error:", facilityInsertErr);
+            console.error("Facilities insert DB Error:", facilityInsertErr);
             toast.error(`Database Insert Failed: ${facilityInsertErr.message}`);
             setIsSubmitting(false);
             return;
           }
 
-          // 2. Update profile onboarding status
-          console.log(`[Hospital Registration] Updating profile onboarding status for ${userId}...`);
           const { error: profileUpdateErr } = await supabase.from("profiles").update({
             completed_onboarding: true,
             verification_status: "Submitted",
@@ -194,7 +187,7 @@ export function HospitalOnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("[Hospital Registration] Profile update DB Error:", profileUpdateErr);
+            console.error("Profile update DB Error:", profileUpdateErr);
             toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
             setIsSubmitting(false);
             return;
@@ -216,12 +209,11 @@ export function HospitalOnboardingWizard() {
 
         clearDraft();
         login("hospital");
-        console.log("[Hospital Registration] Registration submission completed successfully. Redirecting...");
         toast.success("Registration submitted! Your hospital is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("[Hospital Registration] Submission Exception:", err);
+        console.error("Submission Exception:", err);
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);

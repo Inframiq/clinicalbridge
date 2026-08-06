@@ -82,7 +82,6 @@ export async function uploadDocumentToStorage(
   overrideUserId?: string
 ): Promise<{ data: UploadedFileMetadata | null; error: Error | null }> {
   try {
-    console.log(`[Storage Upload Start] File: ${file.name}, Folder: ${folder}, Size: ${file.size} bytes`);
     const supabase = createClient();
     let userId = overrideUserId;
 
@@ -105,7 +104,7 @@ export async function uploadDocumentToStorage(
     let publicUrl = "";
 
     if (uploadError) {
-      console.warn("[Storage Upload Warning] Supabase storage upload warning (Bucket may not exist or missing permissions):", uploadError);
+      console.warn("Supabase storage upload warning (bucket may not exist or missing permissions):", uploadError);
       // Fallback local preview URL if bucket is missing in Supabase project instance
       publicUrl = URL.createObjectURL(processedFile);
     } else {
@@ -124,11 +123,10 @@ export async function uploadDocumentToStorage(
       uploadedAt: new Date().toISOString(),
     };
 
-    console.log(`[Storage Upload Processed] File: ${file.name}, Path: ${filePath}`);
     return { data: metadata, error: null };
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error("[Storage Upload Exception] Logged Error:", error);
+    console.error("Storage upload exception:", error);
     return { data: null, error };
   }
 }
