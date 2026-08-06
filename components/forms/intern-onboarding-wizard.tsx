@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, ShieldCheck, Upload } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, ShieldCheck, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +24,10 @@ import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
+import { useAutosave } from "@/hooks/use-autosave";
 import { DEPARTMENTS } from "@/lib/mock-data/departments";
+import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
+import { createClient } from "@/lib/supabase/client";
 
 const schema = z.object({
   firstName: z.string().min(1, "Required"),
@@ -62,65 +65,180 @@ const documentChecklist = [
   { key: "cvResume", label: "CV / Resume" },
 ];
 
+const initialDefaults: FormValues = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  dob: "",
+  department: DEPARTMENTS[0],
+  preferredLocations: "",
+  backgroundCheckConsent: false,
+  agreeToTerms: false,
+};
+
 export function InternOnboardingWizard() {
   const router = useRouter();
-  const { login } = useAuthRole();
+  const { login, signUpWithSupabase, refreshProfile } = useAuthRole();
   const { registerSelfDoctor } = useDoctors();
   const [stepIndex, setStepIndex] = useState(0);
-  const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
+    "intern_onboarding",
+    initialDefaults
+  );
 
   const {
     register,
     control,
     trigger,
     watch,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: "",
-      dob: "",
-      department: DEPARTMENTS[0],
-      preferredLocations: "",
-      backgroundCheckConsent: false,
-      agreeToTerms: false,
-    },
+    defaultValues: initialDefaults,
   });
 
   const values = watch();
-  const uploadedCount = Object.values(uploaded).filter(Boolean).length;
+
+  useEffect(() => {
+    const subscription = watch((value) => {
+      saveDraft(value as Partial<FormValues>);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, saveDraft]);
+
+  useEffect(() => {
+    if (isHydrated) {
+      reset(autosavedData);
+    }
+  }, [isHydrated, autosavedData, reset]);
+
+  const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
+
+  async function handleFileUpload(key: string, file: File) {
+    setUploadingKey(key);
+    console.log(`[Intern Registration] Starting document upload for key '${key}': ${file.name}`);
+    const { data: metadata, error } = await uploadDocumentToStorage(file, "intern_docs");
+    setUploadingKey(null);
+
+    if (error || !metadata) {
+      console.error(`[Intern Registration] Document upload failed for ${file.name}:`, error);
+      toast.error(error?.message || `Failed to upload ${file.name}`);
+      return;
+    }
+
+    setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
+    console.log(`[Intern Registration] Storage upload succeeded. Path: ${metadata.path}`);
+    toast.success(`${file.name} uploaded successfully!`);
+  }
 
   async function handleNext() {
     const fields = stepFields[stepIndex];
     const valid = fields.length === 0 ? true : await trigger(fields);
     if (!valid) return;
+
     if (stepIndex === steps.length - 1) {
-      registerSelfDoctor(
-        {
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: values.phone,
-          specialty: values.department,
-          licenseNumber: "",
-          licenseExpiry: "",
-          npiNumber: "",
-          yearsOfExperience: "0-2 Years",
-          employmentType: "Full-Time",
-          preferredLocations: values.preferredLocations
-            .split(";")
-            .map((l) => l.trim())
-            .filter(Boolean),
-        },
-        "intern"
-      );
-      login("intern");
-      toast.success("Application submitted! Your profile is now under review.");
-      router.push("/intern/dashboard");
+      if (isSubmitting) return;
+      setIsSubmitting(true);
+      console.log("[Intern Registration] Submitting registration workflow...");
+      try {
+        const supabase = createClient();
+        const res = await supabase.auth.getUser();
+        const user = res.data?.user;
+
+        if (!user) {
+          toast.error("Session expired or user not found. Please log in again.");
+          setIsSubmitting(false);
+          router.push("/login");
+          return;
+        }
+
+        const userId = user.id;
+
+        if (userId) {
+          // 1. Insert intern doctor record into PostgreSQL
+          console.log(`[Intern Registration] Inserting doctor record into PostgreSQL for user ${userId}...`);
+          const { error: doctorInsertErr } = await supabase.from("doctors").insert({
+            profile_id: userId,
+            doctor_kind: "intern",
+            first_name: values.firstName,
+            last_name: values.lastName,
+            specialty: values.department,
+            license_number: "INTERN_PENDING",
+            years_of_experience: "0-2 Years",
+            employment_type: "Full-Time",
+            preferred_locations: values.preferredLocations
+              .split(";")
+              .map((l) => l.trim())
+              .filter(Boolean),
+            verified: false,
+            verification_details: uploadedFiles,
+          });
+
+          if (doctorInsertErr) {
+            console.error("[Intern Registration] Doctors insert DB Error:", doctorInsertErr);
+            toast.error(`Database Insert Failed: ${doctorInsertErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
+
+          // 2. Update profile onboarding status
+          console.log(`[Intern Registration] Updating profile onboarding status for ${userId}...`);
+          const { error: profileUpdateErr } = await supabase.from("profiles").update({
+            completed_onboarding: true,
+            verification_status: "Submitted",
+            full_name: `${values.firstName} ${values.lastName}`,
+            phone: values.phone,
+          }).eq("id", userId);
+
+          if (profileUpdateErr) {
+            console.error("[Intern Registration] Profile update DB Error:", profileUpdateErr);
+            toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
+
+          await refreshProfile();
+        }
+
+        registerSelfDoctor(
+          {
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            phone: values.phone,
+            specialty: values.department,
+            licenseNumber: "",
+            licenseExpiry: "",
+            npiNumber: "",
+            yearsOfExperience: "0-2 Years",
+            employmentType: "Full-Time",
+            preferredLocations: values.preferredLocations
+              .split(";")
+              .map((l) => l.trim())
+              .filter(Boolean),
+          },
+          "intern"
+        );
+
+        clearDraft();
+        login("intern");
+        console.log("[Intern Registration] Registration submission completed successfully. Redirecting...");
+        toast.success("Application submitted! Your intern application is waiting for approval.");
+        router.push("/verification/status?status=Submitted");
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("[Intern Registration] Submission Exception:", err);
+        toast.error(`Submission error: ${errorMsg}`);
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));
@@ -222,32 +340,49 @@ export function InternOnboardingWizard() {
               {stepIndex === 1 && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    Upload the required documents (PDF, JPG, PNG — max 10MB).
+                    Upload the required documents to Supabase Storage (PDF, JPG, PNG — max 10MB).
                   </p>
-                  {documentChecklist.map((doc) => (
-                    <div
-                      key={doc.key}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
-                    >
-                      <span className="flex items-center gap-2 text-sm">
-                        <FileText className="size-4 text-muted-foreground" /> {doc.label}
-                      </span>
-                      {uploaded[doc.key] ? (
-                        <span className="flex items-center gap-1 text-xs font-medium text-success">
-                          <CheckCircle2 className="size-3.5" /> Uploaded
+                  {documentChecklist.map((doc) => {
+                    const isUploaded = !!uploadedFiles[doc.key];
+                    const isUploading = uploadingKey === doc.key;
+                    return (
+                      <div
+                        key={doc.key}
+                        className="flex items-center justify-between rounded-lg border border-border p-3"
+                      >
+                        <span className="flex items-center gap-2 text-sm">
+                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
                         </span>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setUploaded((u) => ({ ...u, [doc.key]: true }))}
-                        >
-                          <Upload className="size-3.5" /> Upload
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                        {isUploaded ? (
+                          <span className="flex items-center gap-1 text-xs font-medium text-success">
+                            <CheckCircle2 className="size-3.5" /> {uploadedFiles[doc.key].name}
+                          </span>
+                        ) : (
+                          <label className="cursor-pointer">
+                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                              <span>
+                                {isUploading ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <Upload className="size-3.5" />
+                                )}
+                                Upload
+                              </span>
+                            </Button>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(doc.key, file);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -319,8 +454,10 @@ export function InternOnboardingWizard() {
               <Button type="button" variant="outline" onClick={handleBack} disabled={stepIndex === 0}>
                 <ChevronLeft className="size-4" /> Back
               </Button>
-              <Button type="button" onClick={handleNext}>
-                {stepIndex === steps.length - 1 ? (
+              <Button type="button" onClick={handleNext} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : stepIndex === steps.length - 1 ? (
                   <>
                     <BadgeCheck className="size-4" /> Submit Application
                   </>
@@ -356,7 +493,7 @@ export function InternOnboardingWizard() {
                 {documentChecklist.map((doc) => (
                   <li key={doc.key} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{doc.label}</span>
-                    {uploaded[doc.key] ? (
+                    {uploadedFiles[doc.key] ? (
                       <span className="text-xs font-medium text-success">Uploaded</span>
                     ) : (
                       <span className="text-xs font-medium text-destructive">Not Uploaded</span>

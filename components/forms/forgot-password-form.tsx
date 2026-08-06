@@ -6,9 +6,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { ArrowLeft, Mail, MailCheck } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { useAuthRole } from "@/context/auth-provider";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email address"),
@@ -18,12 +20,23 @@ type FormValues = z.infer<typeof schema>;
 
 export function ForgotPasswordForm() {
   const [sentTo, setSentTo] = useState<string | null>(null);
+  const { resetPasswordForEmail } = useAuthRole();
 
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { email: "" } });
+
+  async function onSubmit(values: FormValues) {
+    const { error } = await resetPasswordForEmail(values.email);
+    if (error) {
+      toast.error(`Password reset error: ${error.message}`);
+      return;
+    }
+    toast.success("Reset link sent!");
+    setSentTo(values.email);
+  }
 
   if (sentTo) {
     return (
@@ -57,7 +70,7 @@ export function ForgotPasswordForm() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit((values) => setSentTo(values.email))} noValidate>
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <FieldGroup>
           <Field data-invalid={!!errors.email}>
             <FieldLabel htmlFor="email">Email Address</FieldLabel>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Controller, useForm, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -14,6 +14,7 @@ import {
   FileText,
   ShieldCheck,
   Upload,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,9 @@ import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
+import { useAutosave } from "@/hooks/use-autosave";
+import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
+import { createClient } from "@/lib/supabase/client";
 import type { Doctor } from "@/types";
 
 const schema = z.object({
@@ -102,82 +106,204 @@ const certificationOptions = [
   { key: "boardCertified", label: "Board Certified in Primary Specialty" },
 ];
 
+const initialDefaults: FormValues = {
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  dob: "",
+  gender: "",
+  npiNumber: "",
+  primarySpecialty: "",
+  subSpecialty: "",
+  yearsOfExperience: "",
+  employmentType: "",
+  preferredLocations: "",
+  licenseNumber: "",
+  licenseState: "",
+  licenseExpiry: "",
+  backgroundCheckConsent: false,
+  bankAccountHolder: "",
+  bankName: "",
+  accountNumber: "",
+  routingNumber: "",
+  agreeToTerms: false,
+};
+
 export function OnboardingWizard() {
   const router = useRouter();
-  const { login } = useAuthRole();
+  const { login, signUpWithSupabase, refreshProfile } = useAuthRole();
   const { registerSelfDoctor } = useDoctors();
   const [stepIndex, setStepIndex] = useState(0);
-  const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
+  const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
+  const [uploadingKey, setUploadingKey] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [certifications, setCertifications] = useState<Record<string, boolean>>({
     acls: true,
     bls: true,
   });
+
+  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
+    "locum_onboarding",
+    initialDefaults
+  );
 
   const {
     register,
     control,
     trigger,
     watch,
+    setValue,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      firstName: "",
-      lastName: "",
-      email: "",
-      phone: "",
-      dob: "",
-      gender: "",
-      npiNumber: "",
-      primarySpecialty: "",
-      subSpecialty: "",
-      yearsOfExperience: "",
-      employmentType: "",
-      preferredLocations: "",
-      licenseNumber: "",
-      licenseState: "",
-      licenseExpiry: "",
-      backgroundCheckConsent: false,
-      bankAccountHolder: "",
-      bankName: "",
-      accountNumber: "",
-      routingNumber: "",
-      agreeToTerms: false,
-    },
+    defaultValues: initialDefaults,
   });
 
   const values = watch();
-  const uploadedCount = Object.values(uploaded).filter(Boolean).length;
+
+  // Save changes to local storage draft
+  useEffect(() => {
+    const subscription = watch((value) => {
+      saveDraft(value as Partial<FormValues>);
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, saveDraft]);
+
+  useEffect(() => {
+    if (isHydrated) {
+      reset(autosavedData);
+    }
+  }, [isHydrated, autosavedData, reset]);
+
+  const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
+
+  async function handleFileUpload(key: string, file: File) {
+    setUploadingKey(key);
+    console.log(`[Locum Doctor Registration] Starting document upload for key '${key}': ${file.name}`);
+    const { data: metadata, error } = await uploadDocumentToStorage(file, "locum_docs");
+    setUploadingKey(null);
+
+    if (error || !metadata) {
+      console.error(`[Locum Doctor Registration] Document upload failed for ${file.name}:`, error);
+      toast.error(error?.message || `Failed to upload ${file.name}`);
+      return;
+    }
+
+    setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
+    console.log(`[Locum Doctor Registration] Storage upload succeeded. Path: ${metadata.path}`);
+    toast.success(`${file.name} uploaded successfully!`);
+  }
 
   async function handleNext() {
     const fields = stepFields[stepIndex];
     const valid = fields.length === 0 ? true : await trigger(fields);
     if (!valid) return;
+
     if (stepIndex === steps.length - 1) {
-      registerSelfDoctor(
-        {
-          firstName: values.firstName,
-          lastName: values.lastName,
-          email: values.email,
-          phone: values.phone,
-          specialty: values.primarySpecialty,
-          subSpecialty: values.subSpecialty || undefined,
-          licenseNumber: values.licenseNumber,
-          licenseExpiry: values.licenseExpiry,
-          npiNumber: values.npiNumber,
-          yearsOfExperience: values.yearsOfExperience,
-          employmentType: values.employmentType as Doctor["employmentType"],
-          preferredLocations: values.preferredLocations
-            .split(";")
-            .map((l) => l.trim())
-            .filter(Boolean),
-        },
-        "locum"
-      );
-      login("locum_doctor");
-      toast.success("Application submitted! Your profile is now under review.");
-      router.push("/locum/dashboard");
+      if (isSubmitting) return;
+      setIsSubmitting(true);
+      console.log("[Locum Doctor Registration] Submitting registration workflow...");
+      try {
+        const supabase = createClient();
+        const res = await supabase.auth.getUser();
+        const user = res.data?.user;
+
+        if (!user) {
+          toast.error("Session expired or user not found. Please log in again.");
+          setIsSubmitting(false);
+          router.push("/login");
+          return;
+        }
+
+        const userId = user.id;
+
+        if (userId) {
+          const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
+
+          // 1. Insert doctor record in PostgreSQL
+          console.log(`[Locum Doctor Registration] Inserting doctor record into PostgreSQL for user ${userId}...`);
+          const { error: doctorInsertErr } = await supabase.from("doctors").insert({
+            profile_id: userId,
+            doctor_kind: "locum",
+            first_name: values.firstName,
+            last_name: values.lastName,
+            specialty: values.primarySpecialty,
+            sub_specialty: values.subSpecialty || null,
+            license_number: values.licenseNumber,
+            license_expiry: formattedExpiry,
+            npi_number: values.npiNumber,
+            years_of_experience: values.yearsOfExperience,
+            employment_type: values.employmentType,
+            preferred_locations: values.preferredLocations
+              .split(";")
+              .map((l) => l.trim())
+              .filter(Boolean),
+            verified: false,
+            verification_details: { uploadedFiles, certifications },
+          });
+
+          if (doctorInsertErr) {
+            console.error("[Locum Doctor Registration] Doctors insert DB Error:", doctorInsertErr);
+            toast.error(`Database Insert Failed: ${doctorInsertErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
+
+          // 2. Update profile onboarding & verification status
+          console.log(`[Locum Doctor Registration] Updating profile onboarding status for ${userId}...`);
+          const { error: profileUpdateErr } = await supabase.from("profiles").update({
+            completed_onboarding: true,
+            verification_status: "Submitted",
+            full_name: `${values.firstName} ${values.lastName}`,
+            phone: values.phone,
+          }).eq("id", userId);
+
+          if (profileUpdateErr) {
+            console.error("[Locum Doctor Registration] Profile update DB Error:", profileUpdateErr);
+            toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
+            setIsSubmitting(false);
+            return;
+          }
+
+          await refreshProfile();
+        }
+
+        registerSelfDoctor(
+          {
+            firstName: values.firstName,
+            lastName: values.lastName,
+            email: values.email,
+            phone: values.phone,
+            specialty: values.primarySpecialty,
+            subSpecialty: values.subSpecialty || undefined,
+            licenseNumber: values.licenseNumber,
+            licenseExpiry: values.licenseExpiry,
+            npiNumber: values.npiNumber,
+            yearsOfExperience: values.yearsOfExperience,
+            employmentType: values.employmentType as Doctor["employmentType"],
+            preferredLocations: values.preferredLocations
+              .split(";")
+              .map((l) => l.trim())
+              .filter(Boolean),
+          },
+          "locum"
+        );
+
+        clearDraft();
+        login("locum_doctor");
+        console.log("[Locum Doctor Registration] Registration submission completed successfully. Redirecting...");
+        toast.success("Application submitted! Your profile is now waiting for approval.");
+        router.push("/verification/status?status=Submitted");
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        console.error("[Locum Doctor Registration] Submission Exception:", err);
+        toast.error(`Submission error: ${errorMsg}`);
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
     setStepIndex((i) => Math.min(steps.length - 1, i + 1));
@@ -416,32 +542,49 @@ export function OnboardingWizard() {
               {stepIndex === 3 && (
                 <div className="space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    Upload the required documents (PDF, JPG, PNG — max 10MB).
+                    Upload the required documents to Supabase Storage (PDF, JPG, PNG — max 10MB).
                   </p>
-                  {documentChecklist.map((doc) => (
-                    <div
-                      key={doc.key}
-                      className="flex items-center justify-between rounded-lg border border-border p-3"
-                    >
-                      <span className="flex items-center gap-2 text-sm">
-                        <FileText className="size-4 text-muted-foreground" /> {doc.label}
-                      </span>
-                      {uploaded[doc.key] ? (
-                        <span className="flex items-center gap-1 text-xs font-medium text-success">
-                          <CheckCircle2 className="size-3.5" /> Uploaded
+                  {documentChecklist.map((doc) => {
+                    const isUploaded = !!uploadedFiles[doc.key];
+                    const isUploading = uploadingKey === doc.key;
+                    return (
+                      <div
+                        key={doc.key}
+                        className="flex items-center justify-between rounded-lg border border-border p-3"
+                      >
+                        <span className="flex items-center gap-2 text-sm">
+                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
                         </span>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setUploaded((u) => ({ ...u, [doc.key]: true }))}
-                        >
-                          <Upload className="size-3.5" /> Upload
-                        </Button>
-                      )}
-                    </div>
-                  ))}
+                        {isUploaded ? (
+                          <span className="flex items-center gap-1 text-xs font-medium text-success">
+                            <CheckCircle2 className="size-3.5" /> {uploadedFiles[doc.key].name}
+                          </span>
+                        ) : (
+                          <label className="cursor-pointer">
+                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                              <span>
+                                {isUploading ? (
+                                  <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                  <Upload className="size-3.5" />
+                                )}
+                                Upload
+                              </span>
+                            </Button>
+                            <input
+                              type="file"
+                              className="hidden"
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) handleFileUpload(doc.key, file);
+                              }}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 
@@ -553,8 +696,10 @@ export function OnboardingWizard() {
               <Button type="button" variant="outline" onClick={handleBack} disabled={stepIndex === 0}>
                 <ChevronLeft className="size-4" /> Back
               </Button>
-              <Button type="button" onClick={handleNext}>
-                {stepIndex === steps.length - 1 ? (
+              <Button type="button" onClick={handleNext} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : stepIndex === steps.length - 1 ? (
                   <>
                     <BadgeCheck className="size-4" /> Submit Application
                   </>
@@ -590,7 +735,7 @@ export function OnboardingWizard() {
                 {documentChecklist.map((doc) => (
                   <li key={doc.key} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{doc.label}</span>
-                    {uploaded[doc.key] ? (
+                    {uploadedFiles[doc.key] ? (
                       <span className="text-xs font-medium text-success">Uploaded</span>
                     ) : (
                       <span className="text-xs font-medium text-destructive">Not Uploaded</span>
