@@ -27,18 +27,38 @@ import { useDoctors } from "@/hooks/use-doctors";
 import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
+import { describeSupabaseError } from "@/lib/supabase/services/utils";
+import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
+
+const MIN_DOB = isoDateYearsAgo(120);
+const MAX_DOB = todayIsoDate();
+const MIN_LICENSE_EXPIRY = todayIsoDate();
+const MAX_LICENSE_EXPIRY = isoDateYearsFromNow(50);
+
+function isYearInRange(value: string, min: string, max: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  return year >= Number(min.slice(0, 4)) && year <= Number(max.slice(0, 4));
+}
 
 const schema = z.object({
   firstName: z.string().min(1, "Required"),
   lastName: z.string().min(1, "Required"),
   email: z.string().email("Enter a valid email"),
   phone: z.string().min(7, "Required"),
-  dob: z.string().min(1, "Required"),
+  dob: z
+    .string()
+    .min(1, "Required")
+    .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   specialty: z.string().min(1, "Required"),
   npiNumber: z.string().min(5, "Required"),
   hospitalAffiliation: z.string().min(1, "Required"),
   licenseNumber: z.string().min(1, "Required"),
-  licenseExpiry: z.string().min(1, "Required"),
+  licenseExpiry: z
+    .string()
+    .min(1, "Required")
+    .refine((v) => isYearInRange(v, MIN_LICENSE_EXPIRY, MAX_LICENSE_EXPIRY), "Enter a valid expiry date"),
+  documentsComplete: z.boolean().refine((v) => v, "Please upload all required documents before continuing"),
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
 
@@ -54,7 +74,7 @@ const steps = [
 const stepFields: Path<FormValues>[][] = [
   ["firstName", "lastName", "email", "phone", "dob", "specialty", "npiNumber", "hospitalAffiliation"],
   ["licenseNumber", "licenseExpiry"],
-  [],
+  ["documentsComplete"],
   ["agreeToTerms"],
 ];
 
@@ -76,12 +96,13 @@ const initialDefaults: FormValues = {
   hospitalAffiliation: "",
   licenseNumber: "",
   licenseExpiry: "",
+  documentsComplete: false,
   agreeToTerms: false,
 };
 
 export function WorkingDoctorOnboardingWizard() {
   const router = useRouter();
-  const { login, signUpWithSupabase, refreshProfile } = useAuthRole();
+  const { login, refreshProfile } = useAuthRole();
   const { registerSelfDoctor } = useDoctors();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
@@ -99,6 +120,7 @@ export function WorkingDoctorOnboardingWizard() {
     trigger,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -134,7 +156,13 @@ export function WorkingDoctorOnboardingWizard() {
       return;
     }
 
-    setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
+    setUploadedFiles((prev) => {
+      const next = { ...prev, [key]: metadata };
+      setValue("documentsComplete", Object.keys(next).length === documentChecklist.length, {
+        shouldValidate: false,
+      });
+      return next;
+    });
     toast.success(`${file.name} uploaded successfully!`);
   }
 
@@ -149,7 +177,15 @@ export function WorkingDoctorOnboardingWizard() {
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
-        const user = res.data?.user;
+        let user = res.data?.user;
+
+        if (!user) {
+          // The access token may simply be stale (e.g. this multi-step wizard with
+          // document uploads can easily run long enough to need a refresh) - retry
+          // once via the refresh token before discarding the filled-out form.
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          user = refreshed?.user ?? null;
+        }
 
         if (!user) {
           toast.error("Session expired or user not found. Please log in again.");
@@ -159,12 +195,14 @@ export function WorkingDoctorOnboardingWizard() {
         }
 
         const userId = user.id;
+        const doctorId = crypto.randomUUID();
 
         if (userId) {
           // Format license_expiry for Postgres DATE type if present
           const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
 
           const { error: doctorInsertErr } = await supabase.from("doctors").insert({
+            id: doctorId,
             profile_id: userId,
             doctor_kind: "working",
             first_name: values.firstName,
@@ -176,12 +214,12 @@ export function WorkingDoctorOnboardingWizard() {
             years_of_experience: "5+ Years",
             employment_type: "Full-Time",
             verified: false,
-            verification_details: uploadedFiles,
+            uploaded_documents: uploadedFiles,
           });
 
           if (doctorInsertErr) {
-            console.error("Doctors insert DB Error:", doctorInsertErr);
-            toast.error(`Database Insert Failed: ${doctorInsertErr.message}`);
+            console.error("Doctors insert DB Error:", describeSupabaseError(doctorInsertErr));
+            toast.error(`Database Insert Failed: ${describeSupabaseError(doctorInsertErr)}`);
             setIsSubmitting(false);
             return;
           }
@@ -194,8 +232,8 @@ export function WorkingDoctorOnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("Profile update DB Error:", profileUpdateErr);
-            toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
+            console.error("Profile update DB Error:", describeSupabaseError(profileUpdateErr));
+            toast.error(`Profile Update Failed: ${describeSupabaseError(profileUpdateErr)}`);
             setIsSubmitting(false);
             return;
           }
@@ -205,6 +243,7 @@ export function WorkingDoctorOnboardingWizard() {
 
         registerSelfDoctor(
           {
+            id: doctorId,
             firstName: values.firstName,
             lastName: values.lastName,
             email: values.email,
@@ -225,8 +264,8 @@ export function WorkingDoctorOnboardingWizard() {
         toast.success("Application submitted! Your working doctor application is waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("Submission Exception:", err);
+        const errorMsg = err instanceof Error ? err.message : describeSupabaseError(err);
+        console.error("Submission Exception:", errorMsg);
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);
@@ -286,7 +325,7 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.dob}>
                       <FieldLabel htmlFor="dob">Date of Birth *</FieldLabel>
                       <FieldContent>
-                        <Input id="dob" type="date" {...register("dob")} />
+                        <Input id="dob" type="date" min={MIN_DOB} max={MAX_DOB} {...register("dob")} />
                         <FieldError errors={[errors.dob]} />
                       </FieldContent>
                     </Field>
@@ -347,7 +386,13 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.licenseExpiry}>
                       <FieldLabel htmlFor="licenseExpiry">License Expiry Date *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseExpiry" type="date" {...register("licenseExpiry")} />
+                        <Input
+                          id="licenseExpiry"
+                          type="date"
+                          min={MIN_LICENSE_EXPIRY}
+                          max={MAX_LICENSE_EXPIRY}
+                          {...register("licenseExpiry")}
+                        />
                         <FieldError errors={[errors.licenseExpiry]} />
                       </FieldContent>
                     </Field>
@@ -401,6 +446,7 @@ export function WorkingDoctorOnboardingWizard() {
                       </div>
                     );
                   })}
+                  <FieldError errors={[errors.documentsComplete]} />
                 </div>
               )}
 

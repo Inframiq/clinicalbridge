@@ -3,6 +3,7 @@ import type { Shift, ReplacementRequest, Application } from "@/types";
 import { shifts as initialShifts } from "@/lib/mock-data/shifts";
 import { replacementRequests as initialReplacementRequests } from "@/lib/mock-data/replacement-requests";
 import { applications as initialApplications } from "@/lib/mock-data/applications";
+import { isUuid } from "./utils";
 
 export async function getShifts(): Promise<Shift[]> {
   const supabase = createClient();
@@ -17,7 +18,7 @@ export async function getShifts(): Promise<Shift[]> {
       return initialShifts;
     }
 
-    return data.map((item: Record<string, any>) => ({
+    return data.map((item) => ({
       id: item.id,
       title: item.title,
       department: item.department_name,
@@ -36,11 +37,9 @@ export async function getShifts(): Promise<Shift[]> {
       status: item.status,
       codeRed: Boolean(item.code_red),
       assignedDoctorId: item.assigned_doctor_id,
-      replacementStage: item.replacement_stage,
       requiredQualification: item.required_qualification,
       supervisorName: item.supervisor_name,
       emergencyContact: item.emergency_contact,
-      internSupervisionRequired: Boolean(item.intern_supervision_required),
       applicationDeadline: item.application_deadline,
     }));
   } catch (err) {
@@ -61,7 +60,7 @@ export async function getReplacementRequests(): Promise<ReplacementRequest[]> {
       return initialReplacementRequests;
     }
 
-    return data.map((item: Record<string, any>) => ({
+    return data.map((item) => ({
       id: item.id,
       shiftId: item.shift_id,
       requestingDoctorId: item.requesting_doctor_id,
@@ -74,6 +73,7 @@ export async function getReplacementRequests(): Promise<ReplacementRequest[]> {
       reviewedAt: item.reviewed_at,
     }));
   } catch (err) {
+    console.error("Failed to fetch replacement requests from Supabase:", err);
     return initialReplacementRequests;
   }
 }
@@ -90,7 +90,7 @@ export async function getApplications(): Promise<Application[]> {
       return initialApplications;
     }
 
-    return data.map((item: Record<string, any>) => ({
+    return data.map((item) => ({
       id: item.id,
       shiftId: item.shift_id,
       doctorId: item.doctor_id,
@@ -99,18 +99,21 @@ export async function getApplications(): Promise<Application[]> {
       matchScorePct: item.match_score_pct,
     }));
   } catch (err) {
+    console.error("Failed to fetch applications from Supabase:", err);
     return initialApplications;
   }
 }
 
-export async function createShiftInSupabase(shift: Partial<Shift>): Promise<void> {
+export async function createShiftInSupabase(shift: Shift): Promise<void> {
+  if (!isUuid(shift.id) || !isUuid(shift.facilityId)) return;
   const supabase = createClient();
   try {
     await supabase.from("shifts").insert({
+      id: shift.id,
       title: shift.title,
       department_name: shift.department || "General",
       facility_name: shift.facilityName || "City Medical Center",
-      facility_id: shift.facilityId || "fac-city-medical",
+      facility_id: shift.facilityId,
       location: shift.location || {},
       date: shift.date,
       start_time: shift.startTime,
@@ -130,6 +133,7 @@ export async function createShiftInSupabase(shift: Partial<Shift>): Promise<void
 }
 
 export async function updateShiftStatusInSupabase(id: string, status: Shift["status"]): Promise<void> {
+  if (!isUuid(id)) return;
   const supabase = createClient();
   try {
     await supabase.from("shifts").update({ status }).eq("id", id);
@@ -138,14 +142,34 @@ export async function updateShiftStatusInSupabase(id: string, status: Shift["sta
   }
 }
 
-export async function createReplacementRequestInSupabase(req: Partial<ReplacementRequest>): Promise<void> {
+export async function updateShiftAssignmentInSupabase(
+  shiftId: string,
+  patch: { assignedDoctorId?: string | null; status?: Shift["status"] }
+): Promise<void> {
+  if (!isUuid(shiftId)) return;
+  const update: Record<string, unknown> = {};
+  if (patch.assignedDoctorId !== undefined) update.assigned_doctor_id = patch.assignedDoctorId;
+  if (patch.status !== undefined) update.status = patch.status;
+  if (Object.keys(update).length === 0) return;
+
+  const supabase = createClient();
+  try {
+    await supabase.from("shifts").update(update).eq("id", shiftId);
+  } catch (err) {
+    console.error("Supabase update shift assignment error:", err);
+  }
+}
+
+export async function createReplacementRequestInSupabase(req: ReplacementRequest): Promise<void> {
+  if (!isUuid(req.id) || !isUuid(req.shiftId) || !isUuid(req.requestingDoctorId)) return;
   const supabase = createClient();
   try {
     await supabase.from("replacement_requests").insert({
+      id: req.id,
       shift_id: req.shiftId,
       requesting_doctor_id: req.requestingDoctorId,
       reason: req.reason,
-      preferred_replacement_type: req.preferredReplacementType || "Both",
+      preferred_replacement_type: req.preferredReplacementType || "Locum Tenens",
       hourly_compensation: req.hourlyCompensation,
       notes: req.notes,
       status: req.status || "pending",
@@ -159,6 +183,7 @@ export async function updateReplacementRequestStatusInSupabase(
   id: string,
   status: ReplacementRequest["status"]
 ): Promise<void> {
+  if (!isUuid(id)) return;
   const supabase = createClient();
   try {
     await supabase.from("replacement_requests").update({ status }).eq("id", id);
@@ -167,10 +192,30 @@ export async function updateReplacementRequestStatusInSupabase(
   }
 }
 
-export async function createApplicationInSupabase(app: Partial<Application>): Promise<void> {
+export async function modifyReplacementRequestInSupabase(
+  id: string,
+  patch: Partial<Pick<ReplacementRequest, "hourlyCompensation" | "notes">>
+): Promise<void> {
+  if (!isUuid(id)) return;
+  const update: Record<string, unknown> = {};
+  if (patch.hourlyCompensation !== undefined) update.hourly_compensation = patch.hourlyCompensation;
+  if (patch.notes !== undefined) update.notes = patch.notes;
+  if (Object.keys(update).length === 0) return;
+
+  const supabase = createClient();
+  try {
+    await supabase.from("replacement_requests").update(update).eq("id", id);
+  } catch (err) {
+    console.error("Supabase update replacement request error:", err);
+  }
+}
+
+export async function createApplicationInSupabase(app: Application): Promise<void> {
+  if (!isUuid(app.id) || !isUuid(app.shiftId) || !isUuid(app.doctorId)) return;
   const supabase = createClient();
   try {
     await supabase.from("applications").insert({
+      id: app.id,
       shift_id: app.shiftId,
       doctor_id: app.doctorId,
       status: app.status || "applied",
@@ -181,3 +226,15 @@ export async function createApplicationInSupabase(app: Partial<Application>): Pr
   }
 }
 
+export async function updateApplicationStatusInSupabase(
+  id: string,
+  status: Application["status"]
+): Promise<void> {
+  if (!isUuid(id)) return;
+  const supabase = createClient();
+  try {
+    await supabase.from("applications").update({ status }).eq("id", id);
+  } catch (err) {
+    console.error("Supabase update application status error:", err);
+  }
+}
