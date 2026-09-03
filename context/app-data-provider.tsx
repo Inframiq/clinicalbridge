@@ -53,6 +53,7 @@ import {
   updateFacilityRegistrationStatusInSupabase,
 } from "@/lib/supabase/services/facilities";
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/services/payouts";
 import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
 import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
@@ -184,59 +185,108 @@ const CITY_MEDICAL = {
   },
 };
 
+/**
+ * Env-aware initial values. In online mode every slice starts empty so the first
+ * paint shows no mock rows — the sync effect fills them from Supabase. Offline
+ * (no Supabase creds) the mock-data arrays seed the demo. Defined at module
+ * scope so each `seed.*` is a stable reference: `useLocalStorageState`'s
+ * `setValue` depends on `initialValue`, and a fresh `[]` per render would churn
+ * the setter identity and re-fire the effects below every render.
+ */
+const seed = isSupabaseConfigured
+  ? {
+      shifts: [] as Shift[],
+      applications: [] as Application[],
+      payments: [] as PostShiftRecord[],
+      notifications: [] as AppNotification[],
+      doctors: [] as Doctor[],
+      replacementRequests: [] as ReplacementRequest[],
+      savedShifts: [] as SavedShift[],
+      ratings: [] as Rating[],
+      facilities: [] as Facility[],
+    }
+  : {
+      shifts: seedShifts,
+      applications: seedApplications,
+      payments: seedPayments,
+      notifications: seedNotifications,
+      doctors: seedDoctors,
+      replacementRequests: seedReplacementRequests,
+      savedShifts: [] as SavedShift[],
+      ratings: seedRatings,
+      facilities: seedFacilities,
+    };
+
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuthRole();
-  const [shifts, setShifts] = useLocalStorageState<Shift[]>("lt-shifts", seedShifts);
+  const [shifts, setShifts] = useLocalStorageState<Shift[]>("lt-shifts", seed.shifts);
   const [applications, setApplications] = useLocalStorageState<Application[]>(
     "lt-applications",
-    seedApplications
+    seed.applications
   );
   const [payments, setPayments] = useLocalStorageState<PostShiftRecord[]>(
     "lt-payments",
-    seedPayments
+    seed.payments
   );
   const [notifications, setNotifications] = useLocalStorageState<AppNotification[]>(
     "lt-notifications",
-    seedNotifications
+    seed.notifications
   );
-  const [doctors, setDoctors] = useLocalStorageState<Doctor[]>("lt-doctors", seedDoctors);
+  const [doctors, setDoctors] = useLocalStorageState<Doctor[]>("lt-doctors", seed.doctors);
   const [replacementRequests, setReplacementRequests] = useLocalStorageState<ReplacementRequest[]>(
     "lt-replacement-requests",
-    seedReplacementRequests
+    seed.replacementRequests
   );
-  const [savedShifts, setSavedShifts] = useLocalStorageState<SavedShift[]>("lt-saved-shifts", []);
-  const [ratings, setRatings] = useLocalStorageState<Rating[]>("lt-ratings", seedRatings);
-  const [facilities, setFacilities] = useLocalStorageState<Facility[]>("lt-facilities", seedFacilities);
+  const [savedShifts, setSavedShifts] = useLocalStorageState<SavedShift[]>(
+    "lt-saved-shifts",
+    seed.savedShifts
+  );
+  const [ratings, setRatings] = useLocalStorageState<Rating[]>("lt-ratings", seed.ratings);
+  const [facilities, setFacilities] = useLocalStorageState<Facility[]>(
+    "lt-facilities",
+    seed.facilities
+  );
 
   React.useEffect(() => {
-    async function syncSupabaseData() {
+    if (!isSupabaseConfigured) return;
+    let cancelled = false;
+    (async () => {
       try {
-        const [fetchedShifts, fetchedReplacements, fetchedApps, fetchedDoctors, fetchedFacilities, fetchedPayouts, fetchedRatings] =
-          await Promise.all([
-            getShifts(),
-            getReplacementRequests(),
-            getApplications(),
-            getDoctors(),
-            getFacilities(),
-            getPayouts(),
-            getRatings(),
-          ]);
-        if (fetchedShifts.length > 0) setShifts(fetchedShifts);
-        if (fetchedReplacements.length > 0) setReplacementRequests(fetchedReplacements);
-        if (fetchedApps.length > 0) setApplications(fetchedApps);
-        // Doctors/facilities apply unconditionally (even when empty): a real, successful
-        // query with zero rows means zero real registrations exist, which must replace the
-        // seed/mock data shown before the fetch resolves, not leave it looking real forever.
-        setDoctors(fetchedDoctors);
-        setFacilities(fetchedFacilities);
-        if (fetchedPayouts.length > 0) setPayments(fetchedPayouts);
-        if (fetchedRatings.length > 0) setRatings(fetchedRatings);
+        const [shiftsR, replR, appsR, docsR, facsR, payR, ratR] = await Promise.all([
+          getShifts(),
+          getReplacementRequests(),
+          getApplications(),
+          getDoctors(),
+          getFacilities(),
+          getPayouts(),
+          getRatings(),
+        ]);
+        if (cancelled) return;
+        // Each slice is set UNCONDITIONALLY when there is no error — including an
+        // empty array. A successful query with zero rows means zero real records
+        // exist and must replace the empty/optimistic state, not leave stale rows.
+        if (shiftsR.error) reportSupabase("AppDataProvider.sync", shiftsR.error);
+        else setShifts(shiftsR.data);
+        if (replR.error) reportSupabase("AppDataProvider.sync", replR.error);
+        else setReplacementRequests(replR.data);
+        if (appsR.error) reportSupabase("AppDataProvider.sync", appsR.error);
+        else setApplications(appsR.data);
+        if (docsR.error) reportSupabase("AppDataProvider.sync", docsR.error);
+        else setDoctors(docsR.data);
+        if (facsR.error) reportSupabase("AppDataProvider.sync", facsR.error);
+        else setFacilities(facsR.data);
+        if (payR.error) reportSupabase("AppDataProvider.sync", payR.error);
+        else setPayments(payR.data);
+        if (ratR.error) reportSupabase("AppDataProvider.sync", ratR.error);
+        else setRatings(ratR.data);
       } catch (err) {
         reportSupabase("AppDataProvider.sync", err);
       }
-    }
-    syncSupabaseData();
-  }, []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [setShifts, setReplacementRequests, setApplications, setDoctors, setFacilities, setPayments, setRatings]);
 
   React.useEffect(() => {
     const supabase = createClient();
@@ -274,13 +324,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    if (!user?.id) return;
-    getNotifications(user.id)
-      .then((fetched) => {
-        if (fetched && fetched.length > 0) setNotifications(fetched);
-      })
-      .catch((err) => reportSupabase("AppDataProvider.notifications", err));
-  }, [user?.id]);
+    if (!isSupabaseConfigured || !user?.id) return;
+    getNotifications(user.id).then(({ data, error }) => {
+      if (error) reportSupabase("AppDataProvider.notifications", error);
+      else setNotifications(data);
+    });
+  }, [user?.id, setNotifications]);
 
   const broadcastShift = React.useCallback(
     (input: NewShiftInput) => {
