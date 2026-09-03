@@ -3,9 +3,8 @@
 import * as React from "react";
 import type { UserRole } from "@/types";
 import {
-  currentLocumDoctor,
+  currentLocumTenensDoctor,
   currentWorkingDoctor,
-  currentIntern,
 } from "@/lib/mock-data/doctors";
 import { currentFacility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
@@ -43,7 +42,12 @@ interface AuthContextValue extends AuthSession {
     password: string,
     role: UserRole,
     fullName: string
-  ) => Promise<{ error: Error | null; user: User | null; hasSession: boolean }>;
+  ) => Promise<{
+    error: Error | null;
+    user: User | null;
+    hasSession: boolean;
+    isDuplicateEmail?: boolean;
+  }>;
   signInWithOAuth: (provider: "google" | "azure") => Promise<{ error: Error | null }>;
   resendConfirmationEmail: (email: string) => Promise<{ error: Error | null }>;
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
@@ -89,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // If profile doesn't exist yet, insert a fallback profile record
-        const fallbackRole = userRole || "locum_doctor";
+        const fallbackRole = userRole || "locum_tenens";
         const fallbackEmail = userEmail || "";
         const fallbackName = fullName || fallbackEmail.split("@")[0] || "User";
 
@@ -125,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const profile = await fetchProfile(user.id, user.email, undefined, user.user_metadata?.full_name);
-          const role = profile ? profile.role : (user.user_metadata?.role as UserRole) || "locum_doctor";
+          const role = profile ? profile.role : (user.user_metadata?.role as UserRole) || "locum_tenens";
 
           setSession({
             user,
@@ -149,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const authUser = authSession?.user;
         if (authUser) {
           const profile = await fetchProfile(authUser.id, authUser.email, authUser.user_metadata?.role, authUser.user_metadata?.full_name);
-          const role = profile ? profile.role : (authUser.user_metadata?.role as UserRole) || "locum_doctor";
+          const role = profile ? profile.role : (authUser.user_metadata?.role as UserRole) || "locum_tenens";
 
           setSession({
             user: authUser,
@@ -193,13 +197,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           name: `Dr. ${currentWorkingDoctor.firstName} ${currentWorkingDoctor.lastName}`,
           title: currentWorkingDoctor.specialty,
         },
-        locum_doctor: {
-          name: `Dr. ${currentLocumDoctor.firstName} ${currentLocumDoctor.lastName}`,
-          title: currentLocumDoctor.specialty,
-        },
-        intern: {
-          name: `Dr. ${currentIntern.firstName} ${currentIntern.lastName}`,
-          title: `Intern — ${currentIntern.specialty}`,
+        locum_tenens: {
+          name: `Dr. ${currentLocumTenensDoctor.firstName} ${currentLocumTenensDoctor.lastName}`,
+          title: currentLocumTenensDoctor.specialty,
         },
         super_admin: { name: "Platform Admin", title: "Super Admin" },
       };
@@ -252,8 +252,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const roleLabels: Record<UserRole, string> = {
               hospital: "Hospital / Clinic",
               working_doctor: "Working Doctor",
-              locum_doctor: "Locum Doctor",
-              intern: "Intern",
+              locum_tenens: "Locum Tenens",
               super_admin: "Super Admin",
             };
             const expectedLabel = roleLabels[expectedRole] || expectedRole;
@@ -265,7 +264,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return { error: roleMismatchError, profile: null };
           }
 
-          const role = profile?.role || expectedRole || "locum_doctor";
+          const role = profile?.role || expectedRole || "locum_tenens";
           setSession({
             user: data.user,
             role,
@@ -299,12 +298,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (error) {
-          console.error("Supabase Signup Error:", error);
+          const isDuplicateEmail =
+            (error as { code?: string }).code === "user_already_exists" ||
+            (error as { status?: number }).status === 422 ||
+            /already registered|already exists/i.test(error.message);
+
+          // A duplicate-email signup is an expected, user-facing outcome - the form prompts
+          // the visitor to log in instead. Don't console.error it: Next.js surfaces every
+          // console.error as a full-screen dev overlay. Only genuinely unexpected failures
+          // get logged, matching the console.warn pattern used elsewhere in this file.
+          if (!isDuplicateEmail) {
+            console.warn("Supabase signup error:", error.message);
+          }
 
           return {
             error,
             user: null,
             hasSession: false,
+            isDuplicateEmail,
           };
         }
         // The database trigger "on_auth_user_created" automatically creates the profile row

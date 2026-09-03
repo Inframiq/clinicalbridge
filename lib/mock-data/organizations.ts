@@ -1,4 +1,5 @@
 import type { HospitalVerification } from "@/types";
+import type { UploadedFileMetadata } from "@/lib/supabase/storage";
 
 export interface Facility {
   id: string;
@@ -12,6 +13,10 @@ export interface Facility {
   phone: string;
   verification: HospitalVerification;
   status: "pending" | "verified";
+  uploadedDocuments?: Record<string, UploadedFileMetadata>;
+  profileId?: string;
+  /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
+  registrationStatus?: string;
 }
 
 const FULLY_VERIFIED: HospitalVerification = {

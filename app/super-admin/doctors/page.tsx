@@ -46,7 +46,7 @@ export default function SuperAdminDoctorsPage() {
         accessorFn: (row) => row.doctorKind ?? "—",
         cell: ({ row }) => {
           const kind = row.original.doctorKind;
-          const label = kind === "working" ? "Working Doctor" : kind === "locum" ? "Locum Doctor" : kind === "intern" ? "Intern" : "—";
+          const label = kind === "working" ? "Working Doctor" : kind === "locum_tenens" ? "Locum Tenens" : "—";
           return label;
         },
       },
@@ -105,7 +105,7 @@ export default function SuperAdminDoctorsPage() {
     <div>
       <PageHeader
         title="Doctor Verification"
-        description="Platform-wide credential verification across every hospital, locum doctor, and intern."
+        description="Platform-wide credential verification across every hospital and locum tenens doctor."
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

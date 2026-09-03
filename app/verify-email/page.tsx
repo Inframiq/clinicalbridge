@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { MailCheck } from "lucide-react";
@@ -11,6 +11,35 @@ import { Logo } from "@/components/layout/logo";
 import { useAuthRole } from "@/context/auth-provider";
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={<VerifyEmailFallback />}>
+      <VerifyEmailContent />
+    </Suspense>
+  );
+}
+
+function VerifyEmailFallback() {
+  return (
+    <div className="min-h-dvh bg-muted/30">
+      <header className="border-b border-border bg-background">
+        <div className="mx-auto flex h-16 max-w-6xl items-center px-6">
+          <Logo />
+        </div>
+      </header>
+      <main className="mx-auto flex max-w-lg items-center justify-center px-6 py-20">
+        <Card className="w-full text-center shadow-sm">
+          <CardContent className="p-8">
+            <div className="mx-auto size-16 animate-pulse rounded-2xl bg-muted" />
+            <div className="mx-auto mt-6 h-6 w-48 animate-pulse rounded bg-muted" />
+            <div className="mx-auto mt-3 h-4 w-64 animate-pulse rounded bg-muted" />
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+}
+
+function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { resendConfirmationEmail } = useAuthRole();

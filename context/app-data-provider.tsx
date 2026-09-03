@@ -25,16 +25,38 @@ import {
 } from "@/lib/mock-data";
 import { facilities as seedFacilities, type Facility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { useAuthRole } from "@/context/auth-provider";
 import {
   getShifts,
   getReplacementRequests,
   getApplications,
   createShiftInSupabase,
   updateShiftStatusInSupabase,
+  updateShiftAssignmentInSupabase,
   createReplacementRequestInSupabase,
   updateReplacementRequestStatusInSupabase,
+  modifyReplacementRequestInSupabase,
   createApplicationInSupabase,
+  updateApplicationStatusInSupabase,
 } from "@/lib/supabase/services/shifts";
+import {
+  getDoctors,
+  mapDoctorRow,
+  updateDoctorVerificationInSupabase,
+  updateDoctorProfileInSupabase,
+  updateDoctorRegistrationStatusInSupabase,
+} from "@/lib/supabase/services/doctors";
+import {
+  getFacilities,
+  mapFacilityRow,
+  updateFacilityVerificationInSupabase,
+  updateFacilityRegistrationStatusInSupabase,
+} from "@/lib/supabase/services/facilities";
+import { createClient } from "@/lib/supabase/client";
+import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/services/payouts";
+import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
+import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
+import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
 
 export type NewShiftInput = Pick<
   Shift,
@@ -71,12 +93,12 @@ export type NewSelfDoctorInput = Pick<
   | "yearsOfExperience"
   | "employmentType"
   | "preferredLocations"
->;
+> & { id?: string };
 
 export type NewHospitalInput = Pick<
   Facility,
   "name" | "city" | "registrationNumber" | "governmentLicense" | "hospitalType" | "contactPerson" | "email" | "phone"
->;
+> & { id?: string };
 
 export type NewReplacementRequestInput = Pick<
   ReplacementRequest,
@@ -134,14 +156,17 @@ interface AppDataContextValue {
   createReplacementRequest: (input: NewReplacementRequestInput) => ReplacementRequest;
   updateReplacementRequestStatus: (id: string, status: ReplacementRequest["status"]) => void;
   approveReplacementRequest: (id: string) => void;
-  escalateReplacementRequestToInterns: (id: string) => void;
   modifyReplacementRequest: (
     id: string,
-    patch: Partial<Pick<ReplacementRequest, "preferredReplacementType" | "hourlyCompensation" | "notes">>
+    patch: Partial<Pick<ReplacementRequest, "hourlyCompensation" | "notes">>
   ) => void;
   toggleSaveShift: (shiftId: string, doctorId: string) => void;
   submitRating: (input: NewRatingInput) => Rating;
   updateFacilityVerification: (id: string, patch: Partial<HospitalVerification>) => void;
+  approveFacilityRegistration: (id: string) => void;
+  rejectFacilityRegistration: (id: string) => void;
+  approveDoctorRegistration: (id: string) => void;
+  rejectDoctorRegistration: (id: string) => void;
 }
 
 const AppDataContext = React.createContext<AppDataContextValue | null>(null);
@@ -159,6 +184,7 @@ const CITY_MEDICAL = {
 };
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuthRole();
   const [shifts, setShifts] = useLocalStorageState<Shift[]>("lt-shifts", seedShifts);
   const [applications, setApplications] = useLocalStorageState<Application[]>(
     "lt-applications",
@@ -184,14 +210,26 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   React.useEffect(() => {
     async function syncSupabaseData() {
       try {
-        const [fetchedShifts, fetchedReplacements, fetchedApps] = await Promise.all([
-          getShifts(),
-          getReplacementRequests(),
-          getApplications(),
-        ]);
+        const [fetchedShifts, fetchedReplacements, fetchedApps, fetchedDoctors, fetchedFacilities, fetchedPayouts, fetchedRatings] =
+          await Promise.all([
+            getShifts(),
+            getReplacementRequests(),
+            getApplications(),
+            getDoctors(),
+            getFacilities(),
+            getPayouts(),
+            getRatings(),
+          ]);
         if (fetchedShifts.length > 0) setShifts(fetchedShifts);
         if (fetchedReplacements.length > 0) setReplacementRequests(fetchedReplacements);
         if (fetchedApps.length > 0) setApplications(fetchedApps);
+        // Doctors/facilities apply unconditionally (even when empty): a real, successful
+        // query with zero rows means zero real registrations exist, which must replace the
+        // seed/mock data shown before the fetch resolves, not leave it looking real forever.
+        setDoctors(fetchedDoctors);
+        setFacilities(fetchedFacilities);
+        if (fetchedPayouts.length > 0) setPayments(fetchedPayouts);
+        if (fetchedRatings.length > 0) setRatings(fetchedRatings);
       } catch (err) {
         console.warn("Supabase initial sync error:", err);
       }
@@ -199,10 +237,54 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     syncSupabaseData();
   }, []);
 
+  React.useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel("super-admin-approvals")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "doctors" },
+        (payload) => {
+          const mapped = mapDoctorRow(payload.new as Record<string, unknown>);
+          setDoctors((prev) =>
+            prev.some((d) => d.id === mapped.id)
+              ? prev.map((d) => (d.id === mapped.id ? mapped : d))
+              : [mapped, ...prev]
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "facilities" },
+        (payload) => {
+          const mapped = mapFacilityRow(payload.new as Record<string, unknown>);
+          setFacilities((prev) =>
+            prev.some((f) => f.id === mapped.id)
+              ? prev.map((f) => (f.id === mapped.id ? mapped : f))
+              : [mapped, ...prev]
+          );
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!user?.id) return;
+    getNotifications(user.id)
+      .then((fetched) => {
+        if (fetched && fetched.length > 0) setNotifications(fetched);
+      })
+      .catch((err) => console.warn("Supabase notifications sync error:", err));
+  }, [user?.id]);
+
   const broadcastShift = React.useCallback(
     (input: NewShiftInput) => {
       const newShift: Shift = {
-        id: `shift-${Date.now()}`,
+        id: crypto.randomUUID(),
         status: "open",
         ...CITY_MEDICAL,
         ...input,
@@ -232,6 +314,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setApplications((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status } : a))
       );
+      updateApplicationStatusInSupabase(id, status);
     },
     [setApplications]
   );
@@ -239,7 +322,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const applyToShift = React.useCallback(
     (shiftId: string, doctorId: string) => {
       const newApp = {
-        id: `app-${Date.now()}`,
+        id: crypto.randomUUID(),
         shiftId,
         doctorId,
         status: "in_review" as const,
@@ -257,6 +340,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setApplications((prev) =>
         prev.map((a) => (a.id === id ? { ...a, status: "withdrawn" } : a))
       );
+      updateApplicationStatusInSupabase(id, "withdrawn");
     },
     [setApplications]
   );
@@ -271,6 +355,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             : p
         )
       );
+      updatePayoutStatusInSupabase(id, { status: "payment_processed", paidAt: now });
     },
     [setPayments]
   );
@@ -280,6 +365,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setPayments((prev) =>
         prev.map((p) => (p.id === id ? { ...p, status: "disputed" } : p))
       );
+      updatePayoutStatusInSupabase(id, { status: "disputed" });
     },
     [setPayments]
   );
@@ -289,6 +375,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setNotifications((prev) =>
         prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       );
+      markNotificationReadInSupabase(id);
     },
     [setNotifications]
   );
@@ -296,7 +383,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const registerDoctor = React.useCallback(
     (input: NewDoctorInput) => {
       const newDoctor: Doctor = {
-        id: `doc-${Date.now()}`,
+        id: crypto.randomUUID(),
         avatarUrl: undefined,
         specialty: input.qualification,
         rating: 0,
@@ -331,7 +418,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const registerSelfDoctor = React.useCallback(
     (input: NewSelfDoctorInput, doctorKind: DoctorKind) => {
       const newDoctor: Doctor = {
-        id: `doc-${Date.now()}`,
         avatarUrl: undefined,
         rating: 0,
         reviewCount: 0,
@@ -345,6 +431,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           hospitalApproval: false,
         },
         ...input,
+        id: input.id ?? crypto.randomUUID(),
       };
       setDoctors((prev) => [newDoctor, ...prev]);
       return newDoctor;
@@ -355,7 +442,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const registerHospital = React.useCallback(
     (input: NewHospitalInput) => {
       const newFacility: Facility = {
-        id: `fac-${Date.now()}`,
         status: "pending",
         verification: {
           governmentRegistration: false,
@@ -365,6 +451,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           authorizedSignatory: false,
         },
         ...input,
+        id: input.id ?? crypto.randomUUID(),
       };
       setFacilities((prev) => [newFacility, ...prev]);
       return newFacility;
@@ -374,6 +461,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const updateDoctorVerification = React.useCallback(
     (id: string, patch: Partial<DoctorVerification>) => {
+      let nextVerification: DoctorVerification | null = null;
+      let nextVerified = false;
       setDoctors((prev) =>
         prev.map((d) => {
           if (d.id !== id) return d;
@@ -386,6 +475,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             ...patch,
           };
           const allVerified = Object.values(verification).every(Boolean);
+          nextVerification = verification;
+          nextVerified = allVerified;
           return {
             ...d,
             verification,
@@ -394,6 +485,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           };
         })
       );
+      if (nextVerification) updateDoctorVerificationInSupabase(id, nextVerification, nextVerified);
     },
     [setDoctors]
   );
@@ -403,6 +495,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       setShifts((prev) =>
         prev.map((s) => (s.id === shiftId ? { ...s, assignedDoctorId: doctorId, status: "pending" } : s))
       );
+      updateShiftAssignmentInSupabase(shiftId, { assignedDoctorId: doctorId, status: "pending" });
     },
     [setShifts]
   );
@@ -417,6 +510,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
               : { ...s, status: "open", assignedDoctorId: undefined }
             : s
         )
+      );
+      updateShiftAssignmentInSupabase(
+        shiftId,
+        accept ? { status: "confirmed" } : { status: "open", assignedDoctorId: null }
       );
     },
     [setShifts]
@@ -437,6 +534,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       patch: Partial<Pick<Doctor, "phone" | "email" | "preferredLocations" | "replacementPreferences">>
     ) => {
       setDoctors((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
+      updateDoctorProfileInSupabase(id, patch);
     },
     [setDoctors]
   );
@@ -444,7 +542,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const createReplacementRequest = React.useCallback(
     (input: NewReplacementRequestInput) => {
       const newRequest: ReplacementRequest = {
-        id: `rr-${Date.now()}`,
+        id: crypto.randomUUID(),
         status: "pending",
         requestedAt: new Date().toISOString(),
         ...input,
@@ -466,7 +564,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (status === "filled") {
         setNotifications((prev) => [
           {
-            id: `note-${Date.now()}`,
+            id: crypto.randomUUID(),
             title: "Replacement Confirmed",
             body: "A replacement doctor has been confirmed for the shift.",
             timestamp: "Just now",
@@ -483,6 +581,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const approveReplacementRequest = React.useCallback(
     (id: string) => {
       let shiftTitle = "the shift";
+      let shiftId: string | null = null;
       setReplacementRequests((prev) =>
         prev.map((r) => {
           if (r.id !== id) return r;
@@ -494,58 +593,36 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           const request = replacementRequests.find((r) => r.id === id);
           if (!request || s.id !== request.shiftId) return s;
           shiftTitle = s.title;
-          return { ...s, status: "open", assignedDoctorId: undefined, replacementStage: "locum_only" };
+          shiftId = s.id;
+          return { ...s, status: "open", assignedDoctorId: undefined };
         })
       );
       setNotifications((prev) => [
         {
-          id: `note-${Date.now()}`,
+          id: crypto.randomUUID(),
           title: "New Replacement Opportunity",
-          body: `${shiftTitle} was published to Locum Doctors.`,
+          body: `${shiftTitle} was published to Locum Tenens doctors.`,
           timestamp: "Just now",
           read: false,
           type: "info",
         },
         ...prev,
       ]);
+      updateReplacementRequestStatusInSupabase(id, "approved");
+      if (shiftId) updateShiftAssignmentInSupabase(shiftId, { status: "open", assignedDoctorId: null });
     },
     [setReplacementRequests, setShifts, setNotifications, replacementRequests]
-  );
-
-  const escalateReplacementRequestToInterns = React.useCallback(
-    (id: string) => {
-      let shiftTitle = "the shift";
-      setShifts((prev) =>
-        prev.map((s) => {
-          const request = replacementRequests.find((r) => r.id === id);
-          if (!request || s.id !== request.shiftId) return s;
-          shiftTitle = s.title;
-          return { ...s, replacementStage: "open_to_intern" };
-        })
-      );
-      setNotifications((prev) => [
-        {
-          id: `note-${Date.now()}`,
-          title: "Escalated to Interns",
-          body: `${shiftTitle} is now also visible to eligible interns.`,
-          timestamp: "Just now",
-          read: false,
-          type: "info",
-        },
-        ...prev,
-      ]);
-    },
-    [setShifts, setNotifications, replacementRequests]
   );
 
   const modifyReplacementRequest = React.useCallback(
     (
       id: string,
-      patch: Partial<Pick<ReplacementRequest, "preferredReplacementType" | "hourlyCompensation" | "notes">>
+      patch: Partial<Pick<ReplacementRequest, "hourlyCompensation" | "notes">>
     ) => {
       setReplacementRequests((prev) =>
         prev.map((r) => (r.id === id ? { ...r, ...patch } : r))
       );
+      modifyReplacementRequestInSupabase(id, patch);
     },
     [setReplacementRequests]
   );
@@ -554,11 +631,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     (shiftId: string, doctorId: string) => {
       setSavedShifts((prev) => {
         const existing = prev.find((s) => s.shiftId === shiftId && s.doctorId === doctorId);
-        if (existing) return prev.filter((s) => s.id !== existing.id);
-        return [
-          { id: `saved-${Date.now()}`, shiftId, doctorId, savedAt: new Date().toISOString() },
-          ...prev,
-        ];
+        if (existing) {
+          deleteSavedShiftInSupabase(doctorId, shiftId);
+          return prev.filter((s) => s.id !== existing.id);
+        }
+        const newSavedShift = { id: crypto.randomUUID(), shiftId, doctorId, savedAt: new Date().toISOString() };
+        createSavedShiftInSupabase(newSavedShift);
+        return [newSavedShift, ...prev];
       });
     },
     [setSavedShifts]
@@ -567,11 +646,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const submitRating = React.useCallback(
     (input: NewRatingInput) => {
       const newRating: Rating = {
-        id: `rating-${Date.now()}`,
+        id: crypto.randomUUID(),
         createdAt: new Date().toISOString(),
         ...input,
       };
       setRatings((prev) => [newRating, ...prev]);
+      createRatingInSupabase(newRating);
       return newRating;
     },
     [setRatings]
@@ -579,11 +659,13 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const updateFacilityVerification = React.useCallback(
     (id: string, patch: Partial<HospitalVerification>) => {
+      let nextVerification: HospitalVerification | null = null;
       setFacilities((prev) =>
         prev.map((f) => {
           if (f.id !== id) return f;
           const verification: HospitalVerification = { ...f.verification, ...patch };
           const allVerified = Object.values(verification).every(Boolean);
+          nextVerification = verification;
           return {
             ...f,
             verification,
@@ -591,8 +673,84 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           };
         })
       );
+      if (nextVerification) updateFacilityVerificationInSupabase(id, nextVerification);
     },
     [setFacilities]
+  );
+
+  const approveFacilityRegistration = React.useCallback(
+    (id: string) => {
+      const fullyVerified: HospitalVerification = {
+        governmentRegistration: true,
+        medicalLicense: true,
+        taxRegistration: true,
+        accreditation: true,
+        authorizedSignatory: true,
+      };
+      let profileId: string | undefined;
+      setFacilities((prev) =>
+        prev.map((f) => {
+          if (f.id !== id) return f;
+          profileId = f.profileId;
+          return { ...f, verification: fullyVerified, status: "verified", registrationStatus: "Approved" };
+        })
+      );
+      updateFacilityVerificationInSupabase(id, fullyVerified);
+      updateFacilityRegistrationStatusInSupabase(profileId, "Approved");
+    },
+    [setFacilities]
+  );
+
+  const rejectFacilityRegistration = React.useCallback(
+    (id: string) => {
+      let profileId: string | undefined;
+      setFacilities((prev) =>
+        prev.map((f) => {
+          if (f.id !== id) return f;
+          profileId = f.profileId;
+          return { ...f, registrationStatus: "Rejected" };
+        })
+      );
+      updateFacilityRegistrationStatusInSupabase(profileId, "Rejected");
+    },
+    [setFacilities]
+  );
+
+  const approveDoctorRegistration = React.useCallback(
+    (id: string) => {
+      const fullyVerified: DoctorVerification = {
+        medicalCouncil: true,
+        degree: true,
+        identity: true,
+        hospitalApproval: true,
+      };
+      let profileId: string | undefined;
+      setDoctors((prev) =>
+        prev.map((d) => {
+          if (d.id !== id) return d;
+          profileId = d.profileId;
+          return { ...d, verification: fullyVerified, verified: true, status: "active", registrationStatus: "Approved" };
+        })
+      );
+      updateDoctorVerificationInSupabase(id, fullyVerified, true);
+      updateDoctorRegistrationStatusInSupabase(profileId, "Approved");
+    },
+    [setDoctors]
+  );
+
+  const rejectDoctorRegistration = React.useCallback(
+    (id: string) => {
+      let profileId: string | undefined;
+      setDoctors((prev) =>
+        prev.map((d) => {
+          if (d.id !== id) return d;
+          profileId = d.profileId;
+          return { ...d, registrationStatus: "Rejected" };
+        })
+      );
+      updateDoctorRegistrationStatusInSupabase(profileId, "Rejected");
+    },
+    [setDoctors]
   );
 
   const value = React.useMemo(
@@ -625,11 +783,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       createReplacementRequest,
       updateReplacementRequestStatus,
       approveReplacementRequest,
-      escalateReplacementRequestToInterns,
       modifyReplacementRequest,
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      approveFacilityRegistration,
+      rejectFacilityRegistration,
+      approveDoctorRegistration,
+      rejectDoctorRegistration,
     }),
     [
       shifts,
@@ -660,11 +821,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       createReplacementRequest,
       updateReplacementRequestStatus,
       approveReplacementRequest,
-      escalateReplacementRequestToInterns,
       modifyReplacementRequest,
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      approveFacilityRegistration,
+      rejectFacilityRegistration,
+      approveDoctorRegistration,
+      rejectDoctorRegistration,
     ]
   );
 

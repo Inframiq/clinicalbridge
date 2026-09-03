@@ -161,10 +161,10 @@ export default function DoctorAnalyticsPage() {
             topListTitle="Top Facilities"
             topList={topFacilities.map((f) => ({ id: f.id, label: f.name, value: `${f.shiftsWorked} Shifts` }))}
             insights={[
-              { icon: Lightbulb, title: "Key Insight", description: "Your earnings are up 15% compared to last month.", linkLabel: "View Earnings Report", href: "/locum/earnings" },
+              { icon: Lightbulb, title: "Key Insight", description: "Your earnings are up 15% compared to last month.", linkLabel: "View Earnings Report", href: "/locum-tenens/earnings" },
               { icon: Trophy, title: "High Performer", description: "You are in the top 10% of providers by completion rate.", linkLabel: "View Leaderboard", href: "#" },
-              { icon: BarChart3, title: "Utilization Tip", description: "Most of your shifts are in the afternoon. Consider more morning availability.", linkLabel: "View My Schedule", href: "/locum/my-schedule" },
-              { icon: Heart, title: "Quality Score", description: "Your average rating is excellent! Keep up the great work.", linkLabel: "View Reviews", href: "/locum/analytics" },
+              { icon: BarChart3, title: "Utilization Tip", description: "Most of your shifts are in the afternoon. Consider more morning availability.", linkLabel: "View My Schedule", href: "/locum-tenens/my-schedule" },
+              { icon: Heart, title: "Quality Score", description: "Your average rating is excellent! Keep up the great work.", linkLabel: "View Reviews", href: "/locum-tenens/analytics" },
               { icon: FolderOpen, title: "Report Center", description: "Access detailed reports and export data for analysis.", linkLabel: "Go to Report Center", href: "#" },
             ]}
           />

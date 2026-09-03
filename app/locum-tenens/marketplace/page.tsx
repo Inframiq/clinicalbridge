@@ -8,7 +8,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { StatusBadge } from "@/components/dashboard/status-badge";
 import { ShiftDetailsSheet } from "@/components/dashboard/shift-details-sheet";
 import { useShifts } from "@/hooks/use-shifts";
 import { useApplications } from "@/hooks/use-applications";
@@ -59,9 +58,6 @@ export default function MarketplacePage() {
             <div>
               <div className="flex items-center gap-2">
                 <p className="font-medium text-foreground">{shift.title}</p>
-                {shift.replacementStage && (
-                  <StatusBadge label="Replacement Coverage" tone="brand" dot={false} />
-                )}
               </div>
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="size-3" /> {shift.facilityName}

@@ -1,3 +1,5 @@
+import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+
 export type ShiftStatus =
   | "open"
   | "active"
@@ -18,7 +20,7 @@ export interface GeoLocation {
   lng: number;
 }
 
-export type DoctorKind = "working" | "locum" | "intern";
+export type DoctorKind = "working" | "locum_tenens";
 
 export interface DoctorVerification {
   medicalCouncil: boolean;
@@ -68,6 +70,10 @@ export interface Doctor {
   verification?: DoctorVerification;
   replacementPreferences?: ReplacementPreferences;
   languages?: string[];
+  uploadedDocuments?: Record<string, UploadedFileMetadata>;
+  profileId?: string;
+  /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
+  registrationStatus?: string;
 }
 
 export type ShiftType =
@@ -112,8 +118,6 @@ export interface Shift {
   requiredQualification?: string;
   supervisorName?: string;
   emergencyContact?: string;
-  internSupervisionRequired?: boolean;
-  replacementStage?: "locum_only" | "open_to_intern";
 }
 
 export type ApplicationStatus =
@@ -194,8 +198,7 @@ export interface Patient {
 export type UserRole =
   | "hospital"
   | "working_doctor"
-  | "locum_doctor"
-  | "intern"
+  | "locum_tenens"
   | "super_admin";
 
 export interface EarningsPoint {
@@ -232,7 +235,7 @@ export interface FacilitySummary {
   shiftsWorked: number;
 }
 
-export type PreferredReplacementType = "Locum Doctor" | "Intern" | "Both";
+export type PreferredReplacementType = "Locum Tenens";
 
 export type ReplacementRequestStatus = "pending" | "approved" | "rejected" | "filled";
 

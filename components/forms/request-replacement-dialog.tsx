@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -17,22 +17,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
-import type { PreferredReplacementType, Shift } from "@/types";
-
-const preferredTypes: PreferredReplacementType[] = ["Locum Doctor", "Intern", "Both"];
+import type { Shift } from "@/types";
 
 const schema = z.object({
   reason: z.string().min(5, "Tell the hospital why you need coverage"),
-  preferredReplacementType: z.string().min(1),
   hourlyCompensation: z.number().min(1, "Enter a valid hourly rate"),
   notes: z.string().optional(),
 });
@@ -53,14 +43,12 @@ export function RequestReplacementDialog({
 
   const {
     register,
-    control,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
       reason: "",
-      preferredReplacementType: "Both",
       hourlyCompensation: shift.hourlyRate,
       notes: "",
     },
@@ -71,7 +59,7 @@ export function RequestReplacementDialog({
       shiftId: shift.id,
       requestingDoctorId,
       reason: values.reason,
-      preferredReplacementType: values.preferredReplacementType as PreferredReplacementType,
+      preferredReplacementType: "Locum Tenens",
       hourlyCompensation: values.hourlyCompensation,
       notes: values.notes || undefined,
     });
@@ -97,30 +85,6 @@ export function RequestReplacementDialog({
               <FieldContent>
                 <Textarea id="reason" rows={2} placeholder="e.g. Family emergency" {...register("reason")} />
                 <FieldError errors={[errors.reason]} />
-              </FieldContent>
-            </Field>
-
-            <Field>
-              <FieldLabel>Preferred Replacement Type</FieldLabel>
-              <FieldContent>
-                <Controller
-                  control={control}
-                  name="preferredReplacementType"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {preferredTypes.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
               </FieldContent>
             </Field>
 

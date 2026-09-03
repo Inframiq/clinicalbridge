@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Building2, Stethoscope, Briefcase, GraduationCap, ArrowRight } from "lucide-react";
+import { Building2, Stethoscope, Briefcase, ArrowRight } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { PLATFORM } from "@/lib/config/brand";
 
@@ -24,18 +24,11 @@ const choices = [
     role: "working_doctor",
   },
   {
-    href: "/signup?role=locum_doctor",
+    href: "/signup?role=locum_tenens",
     icon: Briefcase,
-    title: "Locum Doctor",
+    title: "Locum Tenens",
     description: "Browse and apply for open shifts across hospitals.",
-    role: "locum_doctor",
-  },
-  {
-    href: "/signup?role=intern",
-    icon: GraduationCap,
-    title: "Intern",
-    description: "Access supervised replacement opportunities.",
-    role: "intern",
+    role: "locum_tenens",
   },
 ];
 
@@ -62,7 +55,7 @@ export default function OnboardingChooserPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {choices.map((choice) => {
             const Icon = choice.icon;
             return (

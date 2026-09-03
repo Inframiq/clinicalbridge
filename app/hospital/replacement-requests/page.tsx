@@ -1,7 +1,7 @@
 "use client";
 
 import { toast } from "sonner";
-import { CheckCircle2, XCircle, PencilLine, ClipboardList, Clock3, TrendingUp, Wallet } from "lucide-react";
+import { CheckCircle2, XCircle, PencilLine, ClipboardList, Clock3, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -30,7 +30,6 @@ export default function ReplacementRequestsPage() {
     replacementRequests,
     approveReplacementRequest,
     updateReplacementRequestStatus,
-    escalateReplacementRequestToInterns,
   } = useReplacementRequests();
   const { shifts } = useShifts();
   const { applications, updateApplicationStatus } = useApplications();
@@ -81,12 +80,8 @@ export default function ReplacementRequestsPage() {
                           <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} subtitle={doctor.specialty} size="sm" />
                         )}
                         <StatusBadge label={meta.label} tone={meta.tone} />
-                        {request.status === "approved" && shift?.replacementStage && (
-                          <StatusBadge
-                            label={shift.replacementStage === "open_to_intern" ? "Escalated to Interns" : "Published to Locum"}
-                            tone={shift.replacementStage === "open_to_intern" ? "info" : "brand"}
-                            dot={false}
-                          />
+                        {request.status === "approved" && (
+                          <StatusBadge label="Published to Locum Tenens" tone="brand" dot={false} />
                         )}
                       </div>
                       <p className="text-sm text-foreground">
@@ -114,7 +109,7 @@ export default function ReplacementRequestsPage() {
                             <EmptyState
                               icon={ClipboardList}
                               title="No applicants yet"
-                              description="Locum doctors and interns who apply will show up here."
+                              description="Locum tenens doctors who apply will show up here."
                               className="border-none py-4"
                             />
                           ) : (
@@ -126,7 +121,7 @@ export default function ReplacementRequestsPage() {
                                   <li key={app.id} className="flex items-center justify-between gap-2">
                                     <Person
                                       name={`Dr. ${applicant.firstName} ${applicant.lastName}`}
-                                      subtitle={applicant.doctorKind === "intern" ? "Intern" : "Locum Doctor"}
+                                      subtitle="Locum Tenens"
                                       size="sm"
                                     />
                                     <Button
@@ -175,25 +170,10 @@ export default function ReplacementRequestsPage() {
                           size="sm"
                           onClick={() => {
                             approveReplacementRequest(request.id);
-                            toast.success("Approved — vacancy published to Locum Doctors");
+                            toast.success("Approved — vacancy published to Locum Tenens doctors");
                           }}
                         >
                           <CheckCircle2 className="size-4" /> Approve
-                        </Button>
-                      </div>
-                    )}
-
-                    {request.status === "approved" && shift?.replacementStage === "locum_only" && (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            escalateReplacementRequestToInterns(request.id);
-                            toast.success("Escalated to Interns");
-                          }}
-                        >
-                          <TrendingUp className="size-4" /> Escalate to Interns
                         </Button>
                       </div>
                     )}

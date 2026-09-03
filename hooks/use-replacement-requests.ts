@@ -8,7 +8,6 @@ export function useReplacementRequests() {
     createReplacementRequest,
     updateReplacementRequestStatus,
     approveReplacementRequest,
-    escalateReplacementRequestToInterns,
     modifyReplacementRequest,
   } = useAppData();
   return {
@@ -16,7 +15,6 @@ export function useReplacementRequests() {
     createReplacementRequest,
     updateReplacementRequestStatus,
     approveReplacementRequest,
-    escalateReplacementRequestToInterns,
     modifyReplacementRequest,
   };
 }

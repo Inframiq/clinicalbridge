@@ -79,7 +79,7 @@ export default function DoctorDashboardPage() {
         description="Here's what's on your schedule today."
         actions={
           <Button asChild>
-            <Link href="/locum/shift-hub">
+            <Link href="/locum-tenens/shift-hub">
               <Activity className="size-4" /> Go to Shift Hub
             </Link>
           </Button>
@@ -115,7 +115,7 @@ export default function DoctorDashboardPage() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <ChartCard title="Available Shifts For You" description="Matched to your specialty" viewAllHref="/locum/marketplace" className="lg:col-span-2">
+        <ChartCard title="Available Shifts For You" description="Matched to your specialty" viewAllHref="/locum-tenens/marketplace" className="lg:col-span-2">
           <ul className="divide-y divide-border">
             {availableShifts.length === 0 && (
               <EmptyState
@@ -148,7 +148,7 @@ export default function DoctorDashboardPage() {
           </ul>
         </ChartCard>
 
-        <ChartCard title="My Applications" viewAllHref="/locum/applications">
+        <ChartCard title="My Applications" viewAllHref="/locum-tenens/applications">
           <ul className="space-y-3">
             {myApplications.slice(0, 5).map((app) => {
               const shift = shifts.find((s) => s.id === app.shiftId);
@@ -209,7 +209,7 @@ export default function DoctorDashboardPage() {
         <ChartCard
           title="Notifications"
           description={`${unreadNotifications.length} unread`}
-          viewAllHref="/locum/notifications"
+          viewAllHref="/locum-tenens/notifications"
         >
           <ul className="space-y-3">
             {notifications.slice(0, 3).map((n) => (

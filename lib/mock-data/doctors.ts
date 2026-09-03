@@ -28,7 +28,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 0.8,
     matchScore: 95,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Emergency Department",
     verification: FULLY_VERIFIED,
   },
@@ -74,7 +74,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.2,
     matchScore: 95,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Emergency Department",
     verification: FULLY_VERIFIED,
   },
@@ -97,7 +97,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.5,
     matchScore: 94,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Orthopedics",
     verification: FULLY_VERIFIED,
   },
@@ -118,7 +118,7 @@ export const doctors: Doctor[] = [
     email: "michael.lee@healthmail.com",
     phone: "+1 (555) 123-4571",
     status: "active",
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Intensive Care Unit",
     verification: FULLY_VERIFIED,
   },
@@ -139,29 +139,8 @@ export const doctors: Doctor[] = [
     email: "priya.shah@healthmail.com",
     phone: "+1 (555) 123-4572",
     status: "active",
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Pediatrics Unit",
-    verification: FULLY_VERIFIED,
-  },
-  {
-    id: "doc-alex-nguyen",
-    firstName: "Alex",
-    lastName: "Nguyen",
-    specialty: "General Medicine",
-    rating: 4.6,
-    reviewCount: 12,
-    licenseNumber: "NY-723456",
-    licenseExpiry: "2027-02-01",
-    npiNumber: "1234567896",
-    yearsOfExperience: "0-2 Years",
-    employmentType: "Full-Time",
-    preferredLocations: ["New York, NY"],
-    verified: true,
-    email: "alex.nguyen@healthmail.com",
-    phone: "+1 (555) 123-4573",
-    status: "active",
-    doctorKind: "intern",
-    department: "General Medicine",
     verification: FULLY_VERIFIED,
   },
   {
@@ -208,11 +187,9 @@ export const doctors: Doctor[] = [
   },
 ];
 
-/** The signed-in Locum Doctor's identity. */
+/** The signed-in Locum Tenens doctor's identity. */
 export const currentDoctor = doctors[0];
 /** The signed-in Working Doctor's identity. */
 export const currentWorkingDoctor = doctors[1];
-/** The signed-in Locum Doctor's identity (alias, kept for role-name clarity). */
-export const currentLocumDoctor = doctors[0];
-/** The signed-in Intern's identity. */
-export const currentIntern = doctors[6];
+/** The signed-in Locum Tenens doctor's identity (alias, kept for role-name clarity). */
+export const currentLocumTenensDoctor = doctors[0];

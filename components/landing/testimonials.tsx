@@ -11,7 +11,7 @@ const testimonials = [
   },
   {
     quote:
-      "I pick up shifts around my schedule and get paid within days of completing them. It's the flexibility I wanted from locum work.",
+      "I pick up shifts around my schedule and get paid within days of completing them. It's the flexibility I wanted from locum tenens work.",
     name: "Dr. Marcus Webb",
     title: "Emergency Medicine Physician",
     initials: "MW",

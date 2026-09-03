@@ -1,12 +1,12 @@
 "use client";
 
 import { AppShell } from "@/components/layout/app-shell";
-import { locumNavItems } from "@/lib/nav-config";
+import { locumTenensNavItems } from "@/lib/nav-config";
 import { PLATFORM } from "@/lib/config/brand";
 
-export default function LocumLayout({ children }: { children: React.ReactNode }) {
+export default function LocumTenensLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AppShell navItems={locumNavItems} rootLabel={PLATFORM.name} requiredRole="locum_doctor">
+    <AppShell navItems={locumTenensNavItems} rootLabel={PLATFORM.name} requiredRole="locum_tenens">
       {children}
     </AppShell>
   );

@@ -151,7 +151,7 @@ export function ShiftDetailsSheet({
             variant="ghost"
             onClick={() => {
               toast.success(`Message sent to ${shift.facilityName}`);
-              router.push("/locum/messages");
+              router.push("/locum-tenens/messages");
             }}
           >
             <MessageSquare className="size-4" /> Contact Hospital Coordinator

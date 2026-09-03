@@ -69,8 +69,7 @@ function MicrosoftIcon() {
 const roleOnboardingPaths: Record<UserRole, string> = {
   hospital: "/onboarding/hospital",
   working_doctor: "/onboarding/working-doctor",
-  locum_doctor: "/onboarding/locum",
-  intern: "/onboarding/intern",
+  locum_tenens: "/onboarding/locum-tenens",
   super_admin: "/super-admin/dashboard",
 };
 

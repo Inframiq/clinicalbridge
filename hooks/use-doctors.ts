@@ -10,6 +10,8 @@ export function useDoctors() {
     updateDoctorVerification,
     updateDoctorProfile,
     assignDoctorToShift,
+    approveDoctorRegistration,
+    rejectDoctorRegistration,
   } = useAppData();
   return {
     doctors,
@@ -18,5 +20,7 @@ export function useDoctors() {
     updateDoctorVerification,
     updateDoctorProfile,
     assignDoctorToShift,
+    approveDoctorRegistration,
+    rejectDoctorRegistration,
   };
 }
