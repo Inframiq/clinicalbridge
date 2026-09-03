@@ -57,6 +57,7 @@ import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/service
 import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
 import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
+import { reportSupabase } from "@/lib/supabase/log";
 
 export type NewShiftInput = Pick<
   Shift,
@@ -231,7 +232,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         if (fetchedPayouts.length > 0) setPayments(fetchedPayouts);
         if (fetchedRatings.length > 0) setRatings(fetchedRatings);
       } catch (err) {
-        console.warn("Supabase initial sync error:", err);
+        reportSupabase("AppDataProvider.sync", err);
       }
     }
     syncSupabaseData();
@@ -278,7 +279,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       .then((fetched) => {
         if (fetched && fetched.length > 0) setNotifications(fetched);
       })
-      .catch((err) => console.warn("Supabase notifications sync error:", err));
+      .catch((err) => reportSupabase("AppDataProvider.notifications", err));
   }, [user?.id]);
 
   const broadcastShift = React.useCallback(

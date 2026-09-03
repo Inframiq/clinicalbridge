@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { HospitalVerification } from "@/types";
 import { facilities as initialFacilities, type Facility } from "@/lib/mock-data/organizations";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 const EMPTY_VERIFICATION: HospitalVerification = {
   governmentRegistration: false,
@@ -42,7 +43,7 @@ export async function getFacilities(): Promise<Facility[]> {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.warn("Supabase facilities query failed, using initial dataset as a display-only fallback:", error.message);
+      reportSupabase("getFacilities", error);
       return initialFacilities;
     }
 
@@ -51,7 +52,7 @@ export async function getFacilities(): Promise<Facility[]> {
     // fall back to seed/mock data that would look like real registrations.
     return (data ?? []).map(mapFacilityRow);
   } catch (err) {
-    console.error("Failed to fetch facilities from Supabase:", err);
+    reportSupabase("getFacilities", err);
     return initialFacilities;
   }
 }
@@ -65,7 +66,7 @@ export async function updateFacilityVerificationInSupabase(
   try {
     await supabase.from("facilities").update({ verification_status: verification }).eq("id", id);
   } catch (err) {
-    console.error("Supabase update facility verification error:", err);
+    reportSupabase(`updateFacilityVerificationInSupabase(${id})`, err);
   }
 }
 
@@ -87,6 +88,6 @@ export async function updateFacilityRegistrationStatusInSupabase(
       .update({ verification_status: status, verified: status === "Approved" })
       .eq("id", profileId);
   } catch (err) {
-    console.error("Supabase update facility registration status error:", err);
+    reportSupabase(`updateFacilityRegistrationStatusInSupabase(${profileId})`, err);
   }
 }

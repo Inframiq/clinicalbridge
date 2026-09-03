@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Doctor, DoctorVerification } from "@/types";
 import { doctors as initialDoctors } from "@/lib/mock-data/doctors";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapDoctorRow(item: Record<string, any>): Doctor {
@@ -48,7 +49,7 @@ export async function getDoctors(): Promise<Doctor[]> {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.warn("Supabase doctors query failed, using initial dataset as a display-only fallback:", error.message);
+      reportSupabase("getDoctors", error);
       return initialDoctors;
     }
 
@@ -57,7 +58,7 @@ export async function getDoctors(): Promise<Doctor[]> {
     // fall back to seed/mock data that would look like real registrations.
     return (data ?? []).map(mapDoctorRow);
   } catch (err) {
-    console.error("Failed to fetch doctors from Supabase:", err);
+    reportSupabase("getDoctors", err);
     return initialDoctors;
   }
 }
@@ -78,7 +79,7 @@ export async function updateDoctorVerificationInSupabase(
     const merged = { ...(existing?.verification_details || {}), ...verification };
     await supabase.from("doctors").update({ verified, verification_details: merged }).eq("id", id);
   } catch (err) {
-    console.error("Supabase update doctor verification error:", err);
+    reportSupabase(`updateDoctorVerificationInSupabase(${id})`, err);
   }
 }
 
@@ -100,7 +101,7 @@ export async function updateDoctorRegistrationStatusInSupabase(
       .update({ verification_status: status, verified: status === "Approved" })
       .eq("id", profileId);
   } catch (err) {
-    console.error("Supabase update doctor registration status error:", err);
+    reportSupabase(`updateDoctorRegistrationStatusInSupabase(${profileId})`, err);
   }
 }
 
@@ -124,6 +125,6 @@ export async function updateDoctorProfileInSupabase(
   try {
     await supabase.from("doctors").update(update).eq("id", id);
   } catch (err) {
-    console.error("Supabase update doctor profile error:", err);
+    reportSupabase(`updateDoctorProfileInSupabase(${id})`, err);
   }
 }

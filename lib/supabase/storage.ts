@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { reportSupabase } from "./log";
 
 export interface UploadedFileMetadata {
   name: string;
@@ -104,7 +105,7 @@ export async function uploadDocumentToStorage(
     let publicUrl = "";
 
     if (uploadError) {
-      console.warn("Supabase storage upload warning (bucket may not exist or missing permissions):", uploadError);
+      reportSupabase("uploadDocumentToStorage", uploadError);
       // Fallback local preview URL if bucket is missing in Supabase project instance
       publicUrl = URL.createObjectURL(processedFile);
     } else {
@@ -126,7 +127,7 @@ export async function uploadDocumentToStorage(
     return { data: metadata, error: null };
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error("Storage upload exception:", error);
+    reportSupabase("uploadDocumentToStorage", error, { level: "error" });
     return { data: null, error };
   }
 }

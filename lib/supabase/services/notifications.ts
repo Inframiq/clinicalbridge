@@ -2,6 +2,7 @@ import { formatDistanceToNow } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import type { AppNotification } from "@/types";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 export async function getNotifications(userId: string): Promise<AppNotification[] | null> {
   if (!isUuid(userId)) return null;
@@ -14,7 +15,7 @@ export async function getNotifications(userId: string): Promise<AppNotification[
       .order("created_at", { ascending: false });
 
     if (error || !data) {
-      console.warn("Supabase notifications query error:", error?.message);
+      reportSupabase("getNotifications", error);
       return null;
     }
 
@@ -28,7 +29,7 @@ export async function getNotifications(userId: string): Promise<AppNotification[
       type: item.type,
     }));
   } catch (err) {
-    console.error("Failed to fetch notifications from Supabase:", err);
+    reportSupabase("getNotifications", err);
     return null;
   }
 }
@@ -39,7 +40,7 @@ export async function markNotificationReadInSupabase(id: string): Promise<void> 
   try {
     await supabase.from("notifications").update({ read: true }).eq("id", id);
   } catch (err) {
-    console.error("Supabase mark notification read error:", err);
+    reportSupabase(`markNotificationReadInSupabase(${id})`, err);
   }
 }
 
@@ -59,6 +60,6 @@ export async function createNotificationInSupabase(
       read: false,
     });
   } catch (err) {
-    console.error("Supabase insert notification error:", err);
+    reportSupabase("createNotificationInSupabase", err);
   }
 }

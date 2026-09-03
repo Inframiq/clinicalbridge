@@ -4,6 +4,7 @@ import { shifts as initialShifts } from "@/lib/mock-data/shifts";
 import { replacementRequests as initialReplacementRequests } from "@/lib/mock-data/replacement-requests";
 import { applications as initialApplications } from "@/lib/mock-data/applications";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 export async function getShifts(): Promise<Shift[]> {
   const supabase = createClient();
@@ -14,7 +15,7 @@ export async function getShifts(): Promise<Shift[]> {
       .order("created_at", { ascending: false });
 
     if (error || !data || data.length === 0) {
-      console.warn("Supabase query returned empty or error, using initial dataset:", error?.message);
+      reportSupabase("getShifts", error);
       return initialShifts;
     }
 
@@ -43,7 +44,7 @@ export async function getShifts(): Promise<Shift[]> {
       applicationDeadline: item.application_deadline,
     }));
   } catch (err) {
-    console.error("Failed to fetch shifts from Supabase:", err);
+    reportSupabase("getShifts", err);
     return initialShifts;
   }
 }
@@ -73,7 +74,7 @@ export async function getReplacementRequests(): Promise<ReplacementRequest[]> {
       reviewedAt: item.reviewed_at,
     }));
   } catch (err) {
-    console.error("Failed to fetch replacement requests from Supabase:", err);
+    reportSupabase("getReplacementRequests", err);
     return initialReplacementRequests;
   }
 }
@@ -99,7 +100,7 @@ export async function getApplications(): Promise<Application[]> {
       matchScorePct: item.match_score_pct,
     }));
   } catch (err) {
-    console.error("Failed to fetch applications from Supabase:", err);
+    reportSupabase("getApplications", err);
     return initialApplications;
   }
 }
@@ -128,7 +129,7 @@ export async function createShiftInSupabase(shift: Shift): Promise<void> {
       code_red: shift.codeRed || false,
     });
   } catch (err) {
-    console.error("Supabase insert shift error:", err);
+    reportSupabase("createShiftInSupabase", err);
   }
 }
 
@@ -138,7 +139,7 @@ export async function updateShiftStatusInSupabase(id: string, status: Shift["sta
   try {
     await supabase.from("shifts").update({ status }).eq("id", id);
   } catch (err) {
-    console.error("Supabase update shift status error:", err);
+    reportSupabase(`updateShiftStatusInSupabase(${id})`, err);
   }
 }
 
@@ -156,7 +157,7 @@ export async function updateShiftAssignmentInSupabase(
   try {
     await supabase.from("shifts").update(update).eq("id", shiftId);
   } catch (err) {
-    console.error("Supabase update shift assignment error:", err);
+    reportSupabase(`updateShiftAssignmentInSupabase(${shiftId})`, err);
   }
 }
 
@@ -175,7 +176,7 @@ export async function createReplacementRequestInSupabase(req: ReplacementRequest
       status: req.status || "pending",
     });
   } catch (err) {
-    console.error("Supabase insert replacement request error:", err);
+    reportSupabase("createReplacementRequestInSupabase", err);
   }
 }
 
@@ -188,7 +189,7 @@ export async function updateReplacementRequestStatusInSupabase(
   try {
     await supabase.from("replacement_requests").update({ status }).eq("id", id);
   } catch (err) {
-    console.error("Supabase update replacement request error:", err);
+    reportSupabase(`updateReplacementRequestStatusInSupabase(${id})`, err);
   }
 }
 
@@ -206,7 +207,7 @@ export async function modifyReplacementRequestInSupabase(
   try {
     await supabase.from("replacement_requests").update(update).eq("id", id);
   } catch (err) {
-    console.error("Supabase update replacement request error:", err);
+    reportSupabase(`modifyReplacementRequestInSupabase(${id})`, err);
   }
 }
 
@@ -222,7 +223,7 @@ export async function createApplicationInSupabase(app: Application): Promise<voi
       match_score_pct: app.matchScorePct || 85,
     });
   } catch (err) {
-    console.error("Supabase insert application error:", err);
+    reportSupabase("createApplicationInSupabase", err);
   }
 }
 
@@ -235,6 +236,6 @@ export async function updateApplicationStatusInSupabase(
   try {
     await supabase.from("applications").update({ status }).eq("id", id);
   } catch (err) {
-    console.error("Supabase update application status error:", err);
+    reportSupabase(`updateApplicationStatusInSupabase(${id})`, err);
   }
 }

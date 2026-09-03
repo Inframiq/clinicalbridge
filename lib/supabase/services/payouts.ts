@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { PostShiftRecord } from "@/types";
 import { postShiftRecords as initialPayments } from "@/lib/mock-data/payments";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 export async function getPayouts(): Promise<PostShiftRecord[]> {
   const supabase = createClient();
@@ -12,7 +13,7 @@ export async function getPayouts(): Promise<PostShiftRecord[]> {
       .order("submitted_at", { ascending: false });
 
     if (error || !data || data.length === 0) {
-      console.warn("Supabase query returned empty or error, using initial dataset:", error?.message);
+      reportSupabase("getPayouts", error);
       return initialPayments;
     }
 
@@ -34,7 +35,7 @@ export async function getPayouts(): Promise<PostShiftRecord[]> {
       hasClinicalNotes: Boolean(item.has_clinical_notes),
     }));
   } catch (err) {
-    console.error("Failed to fetch payouts from Supabase:", err);
+    reportSupabase("getPayouts", err);
     return initialPayments;
   }
 }
@@ -54,6 +55,6 @@ export async function updatePayoutStatusInSupabase(
   try {
     await supabase.from("payouts").update(update).eq("id", id);
   } catch (err) {
-    console.error("Supabase update payout status error:", err);
+    reportSupabase(`updatePayoutStatusInSupabase(${id})`, err);
   }
 }

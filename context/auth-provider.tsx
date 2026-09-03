@@ -9,6 +9,7 @@ import {
 import { currentFacility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
+import { reportSupabase } from "@/lib/supabase/log";
 import type { User } from "@supabase/supabase-js";
 
 export interface UserProfile {
@@ -89,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (error && error.code !== "PGRST116") {
-          console.warn("Profile fetch warning:", error.message);
+          reportSupabase("auth.fetchProfile", error);
         }
 
         // If profile doesn't exist yet, insert a fallback profile record
@@ -115,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return newProfile as UserProfile;
         }
       } catch (e) {
-        console.warn("Fetch profile exception:", e);
+        reportSupabase("auth.fetchProfile", e);
       }
       return null;
     },
@@ -140,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } catch (err) {
-        console.warn("Supabase auth check notice:", err);
+        reportSupabase("auth.checkUser", err);
       } finally {
         setLoading(false);
       }
@@ -304,11 +305,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             /already registered|already exists/i.test(error.message);
 
           // A duplicate-email signup is an expected, user-facing outcome - the form prompts
-          // the visitor to log in instead. Don't console.error it: Next.js surfaces every
-          // console.error as a full-screen dev overlay. Only genuinely unexpected failures
-          // get logged, matching the console.warn pattern used elsewhere in this file.
+          // the visitor to log in instead, so it is not logged at all. Everything else goes
+          // through reportSupabase, the single Supabase log path, which emits one formatted
+          // warning string rather than a raw error object that Next.js would escalate to a
+          // full-screen dev overlay.
           if (!isDuplicateEmail) {
-            console.warn("Supabase signup error:", error.message);
+            reportSupabase("auth.signUp", error);
           }
 
           return {

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import type { Rating } from "@/types";
 import { ratings as initialRatings } from "@/lib/mock-data/ratings";
 import { isUuid } from "./utils";
+import { reportSupabase } from "../log";
 
 export async function getRatings(): Promise<Rating[]> {
   const supabase = createClient();
@@ -12,7 +13,7 @@ export async function getRatings(): Promise<Rating[]> {
       .order("created_at", { ascending: false });
 
     if (error || !data || data.length === 0) {
-      console.warn("Supabase query returned empty or error, using initial dataset:", error?.message);
+      reportSupabase("getRatings", error);
       return initialRatings;
     }
 
@@ -29,7 +30,7 @@ export async function getRatings(): Promise<Rating[]> {
       createdAt: item.created_at,
     }));
   } catch (err) {
-    console.error("Failed to fetch ratings from Supabase:", err);
+    reportSupabase("getRatings", err);
     return initialRatings;
   }
 }
@@ -49,6 +50,6 @@ export async function createRatingInSupabase(rating: Rating): Promise<void> {
       comment: rating.comment,
     });
   } catch (err) {
-    console.error("Supabase insert rating error:", err);
+    reportSupabase("createRatingInSupabase", err);
   }
 }
