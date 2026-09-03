@@ -30,6 +30,9 @@
 -- database. If 002 never ran, creating the 005 trigger without these columns
 -- makes every subsequent signup fail with "column ... does not exist". These
 -- ALTERs are no-ops when 002 did apply.
+--
+-- This guards a *partial* 002 apply; it is not a true schema gap in the
+-- migration history (002 does define both columns).
 -- -----------------------------------------------------------------------------
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS completed_onboarding BOOLEAN DEFAULT FALSE;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'Pending';
@@ -232,3 +235,111 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.facilities;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- -----------------------------------------------------------------------------
+-- RLS completion: policies for tables that 001 left RLS-enabled with no policy
+-- (replacement_requests, payouts, ratings), plus the missing write policies on
+-- applications / notifications and a hardened shifts policy.
+--
+-- Without this block, every service-layer read/write to replacement_requests,
+-- payouts and ratings is denied the moment the app talks to a live DB, and
+-- application-status / notification updates silently fail. The predicate style
+-- matches migration 006 (owner OR public.is_super_admin()) and migration 008
+-- (owner via EXISTS through public.doctors / public.facilities).
+--
+-- NOTE: no service write currently chains .select() after insert/update, but
+-- these SELECT policies are the prerequisite for doing so (Task 8) and for the
+-- reads that already exist (getReplacementRequests / getPayouts / getRatings).
+-- All statements idempotent: DROP POLICY IF EXISTS before each CREATE POLICY.
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.replacement_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payouts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ratings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
+
+-- replacement_requests: authenticated read; requesting doctor (or super admin) writes.
+DROP POLICY IF EXISTS "Replacement requests viewable by authenticated users" ON public.replacement_requests;
+CREATE POLICY "Replacement requests viewable by authenticated users" ON public.replacement_requests
+    FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Replacement requests insertable by requesting doctor" ON public.replacement_requests;
+CREATE POLICY "Replacement requests insertable by requesting doctor" ON public.replacement_requests
+    FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM public.doctors WHERE id = replacement_requests.requesting_doctor_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    );
+
+DROP POLICY IF EXISTS "Replacement requests updatable by requesting doctor or admin" ON public.replacement_requests;
+CREATE POLICY "Replacement requests updatable by requesting doctor or admin" ON public.replacement_requests
+    FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM public.doctors WHERE id = replacement_requests.requesting_doctor_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    );
+
+-- payouts: authenticated read; payout's doctor (or super admin) updates.
+DROP POLICY IF EXISTS "Payouts viewable by authenticated users" ON public.payouts;
+CREATE POLICY "Payouts viewable by authenticated users" ON public.payouts
+    FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Payouts updatable by owner doctor or admin" ON public.payouts;
+CREATE POLICY "Payouts updatable by owner doctor or admin" ON public.payouts
+    FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM public.doctors WHERE id = payouts.doctor_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    );
+
+-- ratings: authenticated read; rater must own the doctor or facility side (or be admin).
+DROP POLICY IF EXISTS "Ratings viewable by authenticated users" ON public.ratings;
+CREATE POLICY "Ratings viewable by authenticated users" ON public.ratings
+    FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Ratings insertable by the rater" ON public.ratings;
+CREATE POLICY "Ratings insertable by the rater" ON public.ratings
+    FOR INSERT WITH CHECK (
+        EXISTS (SELECT 1 FROM public.doctors WHERE id = ratings.doctor_id AND profile_id = auth.uid())
+        OR EXISTS (SELECT 1 FROM public.facilities WHERE id = ratings.facility_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    );
+
+-- applications: SELECT + INSERT already exist in migration 001. Add the missing UPDATE:
+-- the applying doctor, the facility that owns the application's shift, or a super admin.
+DROP POLICY IF EXISTS "Applications updatable by doctor or facility owner" ON public.applications;
+CREATE POLICY "Applications updatable by doctor or facility owner" ON public.applications
+    FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM public.doctors WHERE id = applications.doctor_id AND profile_id = auth.uid())
+        OR EXISTS (
+            SELECT 1 FROM public.shifts s
+            JOIN public.facilities f ON s.facility_id = f.id
+            WHERE s.id = applications.shift_id AND f.profile_id = auth.uid()
+        )
+        OR public.is_super_admin()
+    );
+
+-- notifications: SELECT already exists in migration 001. Add INSERT + UPDATE.
+DROP POLICY IF EXISTS "Notifications insertable for the target user" ON public.notifications;
+CREATE POLICY "Notifications insertable for the target user" ON public.notifications
+    FOR INSERT WITH CHECK (user_id = auth.uid() OR public.is_super_admin());
+
+DROP POLICY IF EXISTS "Notifications updatable by the target user" ON public.notifications;
+CREATE POLICY "Notifications updatable by the target user" ON public.notifications
+    FOR UPDATE USING (user_id = auth.uid());
+
+-- shifts: replace migration 001's "Shifts manageable by facility" FOR ALL policy
+-- (no WITH CHECK, no super-admin branch) with a hardened owner-or-admin version.
+DROP POLICY IF EXISTS "Shifts viewable by authenticated users" ON public.shifts;
+CREATE POLICY "Shifts viewable by authenticated users" ON public.shifts
+    FOR SELECT USING (auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Shifts manageable by facility" ON public.shifts;
+CREATE POLICY "Shifts manageable by facility" ON public.shifts
+    FOR ALL
+    USING (
+        EXISTS (SELECT 1 FROM public.facilities WHERE id = shifts.facility_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    )
+    WITH CHECK (
+        EXISTS (SELECT 1 FROM public.facilities WHERE id = shifts.facility_id AND profile_id = auth.uid())
+        OR public.is_super_admin()
+    );

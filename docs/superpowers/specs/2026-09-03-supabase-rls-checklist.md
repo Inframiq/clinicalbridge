@@ -8,7 +8,9 @@ combined migration file has been run.
 Status legend:
 
 - **OK** — a migration under `supabase/migrations/` (or `apply_pending_migrations.sql`) already establishes this.
-- **REQUIRED** — the code path exists and needs this policy, but no migration creates it yet. A follow-up migration must add it before that path works against a live DB with RLS enforced.
+- **OK (RLS completion block)** — added to `apply_pending_migrations.sql` by Task 2 in the `-- RLS completion` section at the end of the file. These close gaps that `supabase/migrations/001`–`010` left open; there is no separate follow-up migration.
+
+Every RLS gap this checklist found is now covered by `apply_pending_migrations.sql` — running that one file leaves the DB ready for the service layer. Nothing here is deferred.
 
 ---
 
@@ -47,7 +49,7 @@ Existing `SELECT` policy (`auth.role() = 'authenticated'`) on `doctors` / `facil
 
 Target model:
 
-- **SELECT** — any authenticated user can read (`auth.role() = 'authenticated'`, or an owner-scoped `EXISTS` where the table is private). Needed so a `.select()` chained after an `.insert()` / `.update()` returns the row (see Task 8).
+- **SELECT** — any authenticated user can read (`auth.role() = 'authenticated'`, or an owner-scoped `EXISTS` where the table is private). No service write chains a `.select()` after its `.insert()` / `.update()` today, so these SELECT policies are (a) prerequisites for the reads that already exist (`getReplacementRequests` / `getPayouts` / `getRatings` / `getShifts` / …) and (b) a prerequisite for adding write-then-read round-trips in Task 8.
 - **INSERT / UPDATE / DELETE** — the owner (`auth.uid() = profile_id`, `auth.uid() = id`, `auth.uid() = user_id`, or an owner `EXISTS` sub-select through `doctors` / `facilities`) **or** `public.is_super_admin()`.
 
 ### `profiles`
@@ -79,8 +81,8 @@ Code paths: `auth-provider.tsx` insert; `updateDoctorRegistrationStatusInSupabas
 ### `shifts`
 | Op | Policy | Status |
 |---|---|---|
-| SELECT | `"Shifts viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK — 001 |
-| INSERT / UPDATE / DELETE | `"Shifts manageable by facility"` — `FOR ALL USING (EXISTS (SELECT 1 FROM facilities WHERE id = shifts.facility_id AND profile_id = auth.uid()))` | OK — 001. **Gap: no `public.is_super_admin()` branch** and `FOR ALL` has no `WITH CHECK`. REQUIRED: widen to `... OR public.is_super_admin()` and add a matching `WITH CHECK` so admin tooling and post-insert `.select()` work. |
+| SELECT | `"Shifts viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK — 001, re-created in the RLS completion block (identical predicate). |
+| INSERT / UPDATE / DELETE | `"Shifts manageable by facility"` — `FOR ALL` with `USING` **and** `WITH CHECK` = `EXISTS (SELECT 1 FROM public.facilities WHERE id = shifts.facility_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Migration 001's version had no `WITH CHECK` and no super-admin branch; the completion block `DROP POLICY IF EXISTS "Shifts manageable by facility"` (same name → clean re-run) then recreates it hardened. |
 
 Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `updateShiftAssignmentInSupabase` update.
 
@@ -89,39 +91,39 @@ Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `upd
 |---|---|---|
 | SELECT | `"Applications viewable by applicant or facility owner"` — owner `EXISTS` through `doctors` or through `shifts`→`facilities` | OK — 001 |
 | INSERT | `"Doctors can submit applications"` — `EXISTS (SELECT 1 FROM doctors WHERE id = applications.doctor_id AND profile_id = auth.uid())` | OK — 001 |
-| UPDATE | none | **REQUIRED** — `updateApplicationStatusInSupabase` sets `status`; with RLS on and no UPDATE policy this is a silent deny. Add: facility owner (through `shifts`→`facilities`) or `public.is_super_admin()`. |
-| DELETE | none | REQUIRED only if a withdraw-application path is added. |
+| UPDATE | `"Applications updatable by doctor or facility owner"` — `EXISTS (… doctors … profile_id = auth.uid())` OR `EXISTS (… shifts JOIN facilities … f.profile_id = auth.uid())` OR `public.is_super_admin()` | OK (RLS completion block). Backs `updateApplicationStatusInSupabase` (both the doctor withdrawing and the hospital moving status). |
+| DELETE | none | Not needed — withdrawal is modeled as a `status` update, not a row delete. |
 
 ### `replacement_requests`
 | Op | Policy | Status |
 |---|---|---|
-| SELECT | none | **REQUIRED** — RLS is enabled on the table (001) but **no policy is defined**, so every `getReplacementRequests` read is denied. Add authenticated-read (or owner/facility-scoped read). |
-| INSERT | none | **REQUIRED** — `createReplacementRequestInSupabase`. Add: requesting doctor owns the row (`EXISTS (SELECT 1 FROM doctors WHERE id = requesting_doctor_id AND profile_id = auth.uid())`). |
-| UPDATE | none | **REQUIRED** — `updateReplacementRequestStatusInSupabase`, `modifyReplacementRequestInSupabase`. Add: requesting doctor, owning facility, or `public.is_super_admin()`. |
-| DELETE | none | REQUIRED only if a cancel path is added. |
+| SELECT | `"Replacement requests viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK (RLS completion block). 001 enabled RLS with no policy → `getReplacementRequests` was fully denied; now readable. |
+| INSERT | `"Replacement requests insertable by requesting doctor"` — `EXISTS (SELECT 1 FROM public.doctors WHERE id = replacement_requests.requesting_doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Backs `createReplacementRequestInSupabase`. |
+| UPDATE | `"Replacement requests updatable by requesting doctor or admin"` — same `EXISTS` shape `OR public.is_super_admin()` | OK (RLS completion block). Backs `updateReplacementRequestStatusInSupabase`, `modifyReplacementRequestInSupabase`. |
+| DELETE | none | Not needed — no cancel-by-delete path exists. |
 
 ### `payouts`
 | Op | Policy | Status |
 |---|---|---|
-| SELECT | none | **REQUIRED** — RLS enabled in 001 with no policy; `getPayouts` is denied. Add: doctor owner (`EXISTS` through `doctors`), facility owner (`EXISTS` through `facilities`), or `public.is_super_admin()`. |
-| INSERT | none | REQUIRED when a create-payout path lands (no service method today). |
-| UPDATE | none | **REQUIRED** — `updatePayoutStatusInSupabase` sets `status`, `approved_at`, `paid_at`. Add: facility owner or `public.is_super_admin()`. |
-| DELETE | none | not needed. |
+| SELECT | `"Payouts viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK (RLS completion block). 001 enabled RLS with no policy → `getPayouts` was fully denied; now readable. |
+| INSERT | none | Not needed yet — no service method creates a payout. Add an owner/admin `WITH CHECK` when one lands. |
+| UPDATE | `"Payouts updatable by owner doctor or admin"` — `EXISTS (SELECT 1 FROM public.doctors WHERE id = payouts.doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Backs `updatePayoutStatusInSupabase` (`status`, `approved_at`, `paid_at`). |
+| DELETE | none | Not needed. |
 
 ### `ratings`
 | Op | Policy | Status |
 |---|---|---|
-| SELECT | none | **REQUIRED** — RLS enabled in 001 with no policy; `getRatings` is denied. Add authenticated-read. |
-| INSERT | none | **REQUIRED** — `createRatingInSupabase`. Add: the rater owns the counterpart row (doctor through `doctors`, or facility through `facilities`), keyed off `direction`. |
-| UPDATE / DELETE | none | not needed (ratings are immutable once submitted). |
+| SELECT | `"Ratings viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK (RLS completion block). 001 enabled RLS with no policy → `getRatings` was fully denied; now readable. |
+| INSERT | `"Ratings insertable by the rater"` — `EXISTS (… doctors … profile_id = auth.uid())` OR `EXISTS (… facilities … profile_id = auth.uid())` OR `public.is_super_admin()` | OK (RLS completion block). Backs `createRatingInSupabase`; the rater must own either side of the rating (checked against `doctor_id` / `facility_id`). |
+| UPDATE / DELETE | none | Not needed — ratings are immutable once submitted. |
 
 ### `notifications`
 | Op | Policy | Status |
 |---|---|---|
 | SELECT | `"Notifications viewable by target user"` — `auth.uid() = user_id` | OK — 001 |
-| INSERT | none | **REQUIRED** — `createNotificationInSupabase`. Add: `auth.uid() = user_id OR public.is_super_admin()` (server/admin code fans out notifications to other users, so an admin/service branch is needed). |
-| UPDATE | none | **REQUIRED** — `markNotificationReadInSupabase` sets `read = true`. Add: `auth.uid() = user_id`. |
-| DELETE | none | not needed. |
+| INSERT | `"Notifications insertable for the target user"` — `user_id = auth.uid() OR public.is_super_admin()` | OK (RLS completion block). Backs `createNotificationInSupabase`; the `is_super_admin()` branch covers admin fan-out to other users. |
+| UPDATE | `"Notifications updatable by the target user"` — `user_id = auth.uid()` | OK (RLS completion block). Backs `markNotificationReadInSupabase`. |
+| DELETE | none | Not needed. |
 
 ### `saved_shifts`
 | Op | Policy | Status |
@@ -135,16 +137,26 @@ Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `upd
 
 ---
 
-## Summary of RLS follow-up work (for Task 7 / 8, not this task)
+## RLS coverage — all closed in `apply_pending_migrations.sql`
 
-`apply_pending_migrations.sql` covers the schema and the `profiles` / `facilities` / `doctors` / `saved_shifts` policies. The following tables still need policies added in a new migration before their write paths work under enforced RLS:
+Tasks 7 and 8 are TypeScript-only and write no SQL, and the user runs exactly one
+file. So every gap below is fixed inside `apply_pending_migrations.sql` itself —
+the `-- RLS completion` section appended after the migration 010 block. Nothing is
+deferred.
 
-- **`replacement_requests`** — SELECT + INSERT + UPDATE (no policies at all today).
-- **`payouts`** — SELECT + UPDATE (no policies at all today).
-- **`ratings`** — SELECT + INSERT (no policies at all today).
-- **`applications`** — UPDATE (SELECT + INSERT already exist).
-- **`notifications`** — INSERT + UPDATE (SELECT already exists).
-- **`shifts`** — widen the `FOR ALL` policy with `OR public.is_super_admin()` and a `WITH CHECK`.
+| Table | Added by the RLS completion block | Predicate |
+|---|---|---|
+| `replacement_requests` | SELECT, INSERT, UPDATE | SELECT: authenticated. INSERT/UPDATE: `EXISTS (… doctors … id = requesting_doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()`. |
+| `payouts` | SELECT, UPDATE | SELECT: authenticated. UPDATE: `EXISTS (… doctors … id = payouts.doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()`. |
+| `ratings` | SELECT, INSERT | SELECT: authenticated. INSERT: `EXISTS (… doctors … id = ratings.doctor_id …) OR EXISTS (… facilities … id = ratings.facility_id …) OR public.is_super_admin()`. |
+| `applications` | UPDATE (SELECT + INSERT already in 001) | `EXISTS (… doctors …) OR EXISTS (… shifts JOIN facilities … f.profile_id = auth.uid()) OR public.is_super_admin()`. |
+| `notifications` | INSERT + UPDATE (SELECT already in 001) | INSERT: `user_id = auth.uid() OR public.is_super_admin()`. UPDATE: `user_id = auth.uid()`. |
+| `shifts` | SELECT + `FOR ALL` re-created (replaces 001's) | SELECT: authenticated. Write: `EXISTS (… facilities … id = shifts.facility_id AND profile_id = auth.uid()) OR public.is_super_admin()` in both `USING` and `WITH CHECK`. |
+
+Every statement is `DROP POLICY IF EXISTS … ; CREATE POLICY …` (plus a no-op
+`ALTER TABLE … ENABLE ROW LEVEL SECURITY`), so the file remains safe to run more
+than once, per its header promise. `profiles` / `facilities` / `doctors` /
+`saved_shifts` were already fully covered by the migration 006 / 008 blocks.
 
 ---
 
