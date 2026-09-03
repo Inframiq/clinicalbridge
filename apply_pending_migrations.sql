@@ -21,6 +21,20 @@
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
+-- Migration 002 backfill: guarantee profiles.completed_onboarding and
+-- profiles.verification_status exist before migration 005's handle_new_user()
+-- trigger (below) references them in its INSERT column list.
+--
+-- These columns were added by 002_auth_onboarding_storage.sql, but
+-- 006_ensure_rls_policies.sql notes 002 "only partially applied" on the live
+-- database. If 002 never ran, creating the 005 trigger without these columns
+-- makes every subsequent signup fail with "column ... does not exist". These
+-- ALTERs are no-ops when 002 did apply.
+-- -----------------------------------------------------------------------------
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS completed_onboarding BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS verification_status TEXT DEFAULT 'Pending';
+
+-- -----------------------------------------------------------------------------
 -- Migration 005: Fix "type user_role does not exist" on signup
 -- SECURITY DEFINER functions do not reliably inherit a search_path that
 -- includes "public", so the unqualified `user_role` enum reference in
