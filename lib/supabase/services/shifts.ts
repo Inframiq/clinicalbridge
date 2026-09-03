@@ -7,7 +7,7 @@ import { reportSupabase, describeSupabaseError } from "../log";
 import { mapShiftRow } from "../mappers";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapReplacementRequestRow(item: Record<string, any>): ReplacementRequest {
+export function mapReplacementRequestRow(item: Record<string, any>): ReplacementRequest {
   return {
     id: item.id,
     shiftId: item.shift_id,
@@ -23,7 +23,7 @@ function mapReplacementRequestRow(item: Record<string, any>): ReplacementRequest
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapApplicationRow(item: Record<string, any>): Application {
+export function mapApplicationRow(item: Record<string, any>): Application {
   return {
     id: item.id,
     shiftId: item.shift_id,
