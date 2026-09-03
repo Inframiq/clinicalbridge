@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Rating } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
@@ -28,8 +29,9 @@ export async function getRatings(
 
 export async function createRatingInSupabase(
   rating: Rating,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (
     !isUuid(rating.id) ||
     !isUuid(rating.shiftId) ||
@@ -40,6 +42,7 @@ export async function createRatingInSupabase(
       reportSupabase("createRatingInSupabase: skipped non-uuid id", rating.id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("ratings")

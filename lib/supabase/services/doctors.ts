@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Doctor, DoctorVerification } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
@@ -68,13 +69,15 @@ export async function updateDoctorVerificationInSupabase(
   id: string,
   verification: DoctorVerification,
   verified: boolean,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateDoctorVerificationInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data: existing } = await client
       .from("doctors")
@@ -108,13 +111,15 @@ export async function updateDoctorVerificationInSupabase(
 export async function updateDoctorRegistrationStatusInSupabase(
   profileId: string | undefined,
   status: "Approved" | "Rejected",
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateDoctorRegistrationStatusInSupabase: skipped non-uuid id", profileId);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("profiles")
@@ -138,8 +143,9 @@ export async function updateDoctorProfileInSupabase(
   patch: Partial<
     Pick<Doctor, "specialty" | "subSpecialty" | "licenseNumber" | "licenseExpiry" | "yearsOfExperience" | "preferredLocations">
   >,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateDoctorProfileInSupabase: skipped non-uuid id", id);
@@ -154,6 +160,7 @@ export async function updateDoctorProfileInSupabase(
   if (patch.preferredLocations !== undefined) update.preferred_locations = patch.preferredLocations;
   if (Object.keys(update).length === 0) return { data: null, error: null };
 
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("doctors")

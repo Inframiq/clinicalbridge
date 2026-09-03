@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { HospitalVerification } from "@/types";
 import type { UploadedFileMetadata } from "@/lib/supabase/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -80,13 +81,15 @@ export async function getFacilities(
 export async function updateFacilityVerificationInSupabase(
   id: string,
   verification: HospitalVerification,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateFacilityVerificationInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("facilities")
@@ -114,13 +117,15 @@ export async function updateFacilityVerificationInSupabase(
 export async function updateFacilityRegistrationStatusInSupabase(
   profileId: string | undefined,
   status: "Approved" | "Rejected",
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateFacilityRegistrationStatusInSupabase: skipped non-uuid id", profileId);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("profiles")

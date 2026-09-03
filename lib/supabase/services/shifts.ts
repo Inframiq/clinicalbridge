@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Shift, ReplacementRequest, Application } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
@@ -98,13 +99,15 @@ export async function getApplications(
 
 export async function createShiftInSupabase(
   shift: Shift,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(shift.id) || !isUuid(shift.facilityId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("createShiftInSupabase: skipped non-uuid id", shift.id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("shifts")
@@ -143,13 +146,15 @@ export async function createShiftInSupabase(
 export async function updateShiftStatusInSupabase(
   id: string,
   status: Shift["status"],
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateShiftStatusInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("shifts")
@@ -171,8 +176,9 @@ export async function updateShiftStatusInSupabase(
 export async function updateShiftAssignmentInSupabase(
   shiftId: string,
   patch: { assignedDoctorId?: string | null; status?: Shift["status"] },
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(shiftId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateShiftAssignmentInSupabase: skipped non-uuid id", shiftId);
@@ -183,6 +189,7 @@ export async function updateShiftAssignmentInSupabase(
   if (patch.status !== undefined) update.status = patch.status;
   if (Object.keys(update).length === 0) return { data: null, error: null };
 
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("shifts")
@@ -203,13 +210,15 @@ export async function updateShiftAssignmentInSupabase(
 
 export async function createReplacementRequestInSupabase(
   req: ReplacementRequest,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(req.id) || !isUuid(req.shiftId) || !isUuid(req.requestingDoctorId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("createReplacementRequestInSupabase: skipped non-uuid id", req.id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("replacement_requests")
@@ -239,13 +248,15 @@ export async function createReplacementRequestInSupabase(
 export async function updateReplacementRequestStatusInSupabase(
   id: string,
   status: ReplacementRequest["status"],
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateReplacementRequestStatusInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("replacement_requests")
@@ -267,8 +278,9 @@ export async function updateReplacementRequestStatusInSupabase(
 export async function modifyReplacementRequestInSupabase(
   id: string,
   patch: Partial<Pick<ReplacementRequest, "hourlyCompensation" | "notes">>,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("modifyReplacementRequestInSupabase: skipped non-uuid id", id);
@@ -279,6 +291,7 @@ export async function modifyReplacementRequestInSupabase(
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (Object.keys(update).length === 0) return { data: null, error: null };
 
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("replacement_requests")
@@ -299,13 +312,15 @@ export async function modifyReplacementRequestInSupabase(
 
 export async function createApplicationInSupabase(
   app: Application,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(app.id) || !isUuid(app.shiftId) || !isUuid(app.doctorId)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("createApplicationInSupabase: skipped non-uuid id", app.id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("applications")
@@ -332,13 +347,15 @@ export async function createApplicationInSupabase(
 export async function updateApplicationStatusInSupabase(
   id: string,
   status: Application["status"],
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updateApplicationStatusInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("applications")

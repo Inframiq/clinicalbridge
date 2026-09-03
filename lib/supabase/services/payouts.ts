@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { PostShiftRecord } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
@@ -29,8 +30,9 @@ export async function getPayouts(
 export async function updatePayoutStatusInSupabase(
   id: string,
   patch: Partial<Pick<PostShiftRecord, "status" | "approvedAt" | "paidAt">>,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("updatePayoutStatusInSupabase: skipped non-uuid id", id);
@@ -42,6 +44,7 @@ export async function updatePayoutStatusInSupabase(
   if (patch.paidAt !== undefined) update.paid_at = patch.paidAt;
   if (Object.keys(update).length === 0) return { data: null, error: null };
 
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("payouts")

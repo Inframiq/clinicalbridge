@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { AppNotification } from "@/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
@@ -31,13 +32,15 @@ export async function getNotifications(
 
 export async function markNotificationReadInSupabase(
   id: string,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("markNotificationReadInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("notifications")
@@ -59,13 +62,15 @@ export async function markNotificationReadInSupabase(
 export async function createNotificationInSupabase(
   userId: string,
   notification: Pick<AppNotification, "id" | "title" | "body" | "type">,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(userId) || !isUuid(notification.id)) {
     if (process.env.NODE_ENV !== "production")
       reportSupabase("createNotificationInSupabase: skipped non-uuid id", notification.id);
     return { data: null, error: null };
   }
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("notifications")
