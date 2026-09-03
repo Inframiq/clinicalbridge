@@ -30,18 +30,31 @@ import type { NavItem } from "@/lib/nav-config";
 import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
 import { facilities } from "@/lib/mock-data/organizations";
 import { useAuthRole } from "@/context/auth-provider";
+import type { UserProfile } from "@/context/auth-provider";
 import { useAppData } from "@/context/app-data-provider";
 import { initials } from "@/lib/format";
 
 export function Topbar({
   navItems,
   rootLabel,
+  initialProfile,
 }: {
   navItems: NavItem[];
   rootLabel: string;
+  /**
+   * Server-resolved profile from the role layout. Used only as a display
+   * fallback for the identity chip while the client `AuthProvider` is still
+   * on its SSR-safe empty snapshot, so the avatar/name/title render on first
+   * paint instead of flashing blank. The context always wins once populated.
+   */
+  initialProfile?: UserProfile | null;
 }) {
   const router = useRouter();
-  const { name, title, logout } = useAuthRole();
+  const { name: ctxName, title: ctxTitle, logout } = useAuthRole();
+  const name = ctxName || initialProfile?.full_name || "";
+  const title =
+    ctxTitle ||
+    (initialProfile ? initialProfile.role.replace("_", " ").toUpperCase() : "");
   const { notifications, markNotificationRead } = useAppData();
   const [mobileOpen, setMobileOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
