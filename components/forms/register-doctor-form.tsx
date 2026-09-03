@@ -54,10 +54,14 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
     },
   });
 
-  function onSubmit(values: FormValues) {
-    const doctor = registerDoctor(values);
-    toast.success(`${doctor.firstName} ${doctor.lastName} registered — pending verification`);
-    onSuccess?.();
+  async function onSubmit(values: FormValues) {
+    try {
+      const doctor = await registerDoctor(values);
+      toast.success(`${doctor.firstName} ${doctor.lastName} registered — pending verification`);
+      onSuccess?.();
+    } catch {
+      // AppDataProvider already rolled back and showed an error toast
+    }
   }
 
   return (

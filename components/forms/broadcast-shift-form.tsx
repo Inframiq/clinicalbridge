@@ -101,21 +101,26 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const hours = estimateHours(startTime, endTime);
   const estimatedTotal = hours * (hourlyRate || 0) * (doctorsNeeded || 0);
 
-  function onSubmit(values: FormValues) {
-    broadcastShift({
-      title: values.department.replace(" Department", "").replace(" Unit", ""),
-      department: values.department,
-      date: values.date,
-      startTime: to12Hour(values.startTime),
-      endTime: to12Hour(values.endTime),
-      shiftType: values.shiftType as ShiftType,
-      subSpecialty: values.subSpecialty || undefined,
-      hourlyRate: values.hourlyRate,
-      doctorsNeeded: values.doctorsNeeded,
-      experienceLevel: values.experienceLevel as ExperienceLevel,
-      description: values.description,
-      codeRed: values.codeRed,
-    });
+  async function onSubmit(values: FormValues) {
+    try {
+      await broadcastShift({
+        title: values.department.replace(" Department", "").replace(" Unit", ""),
+        department: values.department,
+        date: values.date,
+        startTime: to12Hour(values.startTime),
+        endTime: to12Hour(values.endTime),
+        shiftType: values.shiftType as ShiftType,
+        subSpecialty: values.subSpecialty || undefined,
+        hourlyRate: values.hourlyRate,
+        doctorsNeeded: values.doctorsNeeded,
+        experienceLevel: values.experienceLevel as ExperienceLevel,
+        description: values.description,
+        codeRed: values.codeRed,
+      });
+    } catch {
+      // AppDataProvider already rolled back and showed an error toast
+      return;
+    }
     toast.success("Shift broadcasted successfully!");
     onSuccess?.();
   }

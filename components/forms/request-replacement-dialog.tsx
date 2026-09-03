@@ -54,15 +54,20 @@ export function RequestReplacementDialog({
     },
   });
 
-  function onSubmit(values: FormValues) {
-    createReplacementRequest({
-      shiftId: shift.id,
-      requestingDoctorId,
-      reason: values.reason,
-      preferredReplacementType: "Locum Tenens",
-      hourlyCompensation: values.hourlyCompensation,
-      notes: values.notes || undefined,
-    });
+  async function onSubmit(values: FormValues) {
+    try {
+      await createReplacementRequest({
+        shiftId: shift.id,
+        requestingDoctorId,
+        reason: values.reason,
+        preferredReplacementType: "Locum Tenens",
+        hourlyCompensation: values.hourlyCompensation,
+        notes: values.notes || undefined,
+      });
+    } catch {
+      // AppDataProvider already rolled back and showed an error toast
+      return;
+    }
     toast.success(`Replacement requested for ${shift.title} — sent to your hospital for approval`);
     setOpen(false);
   }

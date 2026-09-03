@@ -241,23 +241,28 @@ export function WorkingDoctorOnboardingWizard() {
           await refreshProfile();
         }
 
-        registerSelfDoctor(
-          {
-            id: doctorId,
-            firstName: values.firstName,
-            lastName: values.lastName,
-            email: values.email,
-            phone: values.phone,
-            specialty: values.specialty,
-            licenseNumber: values.licenseNumber,
-            licenseExpiry: values.licenseExpiry,
-            npiNumber: values.npiNumber,
-            yearsOfExperience: "5+ Years",
-            employmentType: "Full-Time",
-            preferredLocations: [],
-          },
-          "working"
-        );
+        try {
+          await registerSelfDoctor(
+            {
+              id: doctorId,
+              firstName: values.firstName,
+              lastName: values.lastName,
+              email: values.email,
+              phone: values.phone,
+              specialty: values.specialty,
+              licenseNumber: values.licenseNumber,
+              licenseExpiry: values.licenseExpiry,
+              npiNumber: values.npiNumber,
+              yearsOfExperience: "5+ Years",
+              employmentType: "Full-Time",
+              preferredLocations: [],
+            },
+            "working"
+          );
+        } catch {
+          // AppDataProvider already rolled back and showed an error toast
+          return;
+        }
 
         clearDraft();
         login("working_doctor");

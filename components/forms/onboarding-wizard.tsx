@@ -303,27 +303,32 @@ export function OnboardingWizard() {
           await refreshProfile();
         }
 
-        registerSelfDoctor(
-          {
-            id: doctorId,
-            firstName: values.firstName,
-            lastName: values.lastName,
-            email: values.email,
-            phone: values.phone,
-            specialty: values.primarySpecialty,
-            subSpecialty: values.subSpecialty || undefined,
-            licenseNumber: values.licenseNumber,
-            licenseExpiry: values.licenseExpiry,
-            npiNumber: values.npiNumber,
-            yearsOfExperience: values.yearsOfExperience,
-            employmentType: values.employmentType as Doctor["employmentType"],
-            preferredLocations: values.preferredLocations
-              .split(";")
-              .map((l) => l.trim())
-              .filter(Boolean),
-          },
-          "locum_tenens"
-        );
+        try {
+          await registerSelfDoctor(
+            {
+              id: doctorId,
+              firstName: values.firstName,
+              lastName: values.lastName,
+              email: values.email,
+              phone: values.phone,
+              specialty: values.primarySpecialty,
+              subSpecialty: values.subSpecialty || undefined,
+              licenseNumber: values.licenseNumber,
+              licenseExpiry: values.licenseExpiry,
+              npiNumber: values.npiNumber,
+              yearsOfExperience: values.yearsOfExperience,
+              employmentType: values.employmentType as Doctor["employmentType"],
+              preferredLocations: values.preferredLocations
+                .split(";")
+                .map((l) => l.trim())
+                .filter(Boolean),
+            },
+            "locum_tenens"
+          );
+        } catch {
+          // AppDataProvider already rolled back and showed an error toast
+          return;
+        }
 
         clearDraft();
         login("locum_tenens");

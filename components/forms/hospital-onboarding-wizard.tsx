@@ -216,17 +216,22 @@ export function HospitalOnboardingWizard() {
           await refreshProfile();
         }
 
-        registerHospital({
-          id: facilityId,
-          name: values.name,
-          city: values.city,
-          registrationNumber: values.registrationNumber,
-          governmentLicense: values.governmentLicense,
-          hospitalType: values.hospitalType,
-          contactPerson: values.contactPerson,
-          email: values.email,
-          phone: values.phone,
-        });
+        try {
+          await registerHospital({
+            id: facilityId,
+            name: values.name,
+            city: values.city,
+            registrationNumber: values.registrationNumber,
+            governmentLicense: values.governmentLicense,
+            hospitalType: values.hospitalType,
+            contactPerson: values.contactPerson,
+            email: values.email,
+            phone: values.phone,
+          });
+        } catch {
+          // AppDataProvider already rolled back and showed an error toast
+          return;
+        }
 
         clearDraft();
         login("hospital");
