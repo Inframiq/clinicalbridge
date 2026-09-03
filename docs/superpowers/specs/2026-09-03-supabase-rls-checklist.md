@@ -184,9 +184,39 @@ public, pg_temp` and idempotent (`CREATE OR REPLACE FUNCTION` +
 
 | Trigger | Table | Guarded columns | Behaviour |
 |---|---|---|---|
-| `guard_privileged_profile_update` | `public.profiles` | `role`, `verified`, `verification_status` | `RAISE EXCEPTION` if any of the three is `IS DISTINCT FROM` its old value and `NOT public.is_super_admin()`. |
-| `guard_privileged_doctor_update` | `public.doctors` | `verified`, `profile_id` | Same shape — blocks doctor self-verification and ownership reassignment. |
+| `guard_privileged_profile_update` | `public.profiles` | `role`, `verified` (strict); `verification_status` (with one carve-out) | `RAISE EXCEPTION` when `NOT public.is_super_admin()` and `role` or `verified` changes at all. For `verification_status`, a change is rejected **unless the new value is `'Submitted'`** — see the carve-out below. |
+| `guard_privileged_doctor_update` | `public.doctors` | `verified`, `profile_id` | `RAISE EXCEPTION` if either is `IS DISTINCT FROM` its old value and `NOT public.is_super_admin()` — blocks doctor self-verification and ownership reassignment. |
 | `guard_privileged_facility_update` | `public.facilities` | `profile_id` | Blocks facility ownership reassignment / disowning. |
+
+#### `verification_status` — the `'Submitted'` carve-out
+
+`profiles.verification_status` is **admin-only except that a non-admin may set it
+to `'Submitted'` on their own row**. That is the "I have uploaded my documents"
+transition all three onboarding wizards perform
+(`components/forms/onboarding-wizard.tsx:299`,
+`hospital-onboarding-wizard.tsx:204`,
+`working-doctor-onboarding-wizard.tsx:237`), as the signing-up user, in the same
+`.update()` that writes `completed_onboarding`, `full_name` and `phone`. It also
+covers re-submission after an admin sets `'Needs Changes'`.
+
+`'Submitted'` confers no privilege — `is_super_admin()` reads only
+`profiles.role`, and the value is consumed by the verification screens
+(`app/verification/status/page.tsx`, `components/forms/login-form.tsx`) for
+routing copy. Every other value — `'Under Review'`, `'Needs Changes'`,
+`'Approved'`, `'Rejected'` — remains reachable only through the
+`NOT public.is_super_admin()` gate, i.e. only by a super admin. Since `verified`
+is guarded strictly and independently, a user who sets their own status to
+`'Submitted'` still cannot flip `profiles.verified`.
+
+Codebase check backing the carve-out (`verification_status` across
+`components/forms/`, `context/`, `app/`, `lib/`): the only non-admin **UPDATE**
+writes are the three wizards, all writing exactly `'Submitted'`. The
+`'Approved'` / `'Rejected'` writes come from
+`updateDoctorRegistrationStatusInSupabase` / `updateFacilityRegistrationStatusInSupabase`,
+which run as the super admin. `context/auth-provider.tsx:117` is inside an
+`.upsert(…, { onConflict: "id", ignoreDuplicates: true })` → `ON CONFLICT DO NOTHING`
+(INSERT only, the BEFORE UPDATE trigger never fires), and `:233` / `:269` build
+in-memory `UserProfile` objects for offline/demo mode with no DB write at all.
 
 Only `UPDATE` is guarded. `INSERT` is unaffected — `handle_new_user()` and the
 `auth-provider.tsx` fallback upsert (`onConflict: "id", ignoreDuplicates: true`
@@ -202,32 +232,7 @@ insert in the onboarding wizards writes `verified: false` on a fresh row.
 | `updateDoctorProfileInSupabase` (specialty / license / locations / …) | doctor | no | allowed |
 | `updateFacilityVerificationInSupabase` (`facilities.verification_status` jsonb) | hospital | no — that is the jsonb checklist column on `facilities`, not `profiles.verification_status`, and `facilities` guards only `profile_id` | allowed |
 | onboarding wizards → `profiles.update({ completed_onboarding, full_name, phone })` | new user (non-admin) | no | allowed |
-| **onboarding wizards → `profiles.update({ verification_status: 'Submitted' })`** | **new user (non-admin)** | **yes** | **BLOCKED — see below** |
-
-#### ⚠️ Known conflict: onboarding writes `profiles.verification_status`
-
-All three wizards (`components/forms/onboarding-wizard.tsx:297`,
-`hospital-onboarding-wizard.tsx:202`,
-`working-doctor-onboarding-wizard.tsx:235`) set
-`verification_status: 'Submitted'` on the submitting user's own profile, as that
-non-admin user, in the same `.update()` that writes `completed_onboarding`,
-`full_name` and `phone`. `guard_privileged_profile_update` raises on that write,
-so **with the trigger active as written, onboarding submission fails for every
-new signup**.
-
-This is flagged rather than silently worked around, because widening the guard is
-a security decision. Options, in order of preference:
-
-- **(a)** Allow the self-transition to `'Submitted'` only (never `'Approved'` /
-  `'Rejected'`), while still blocking `role` and `verified` outright. `'Submitted'`
-  confers no privilege — `is_super_admin()` never reads it.
-- **(b)** Move the `'Submitted'` write behind a `SECURITY DEFINER` RPC that sets
-  only that value, and drop the column write from the wizards.
-- **(c)** Remove `verification_status` from the guarded set and rely on the
-  `role` + `verified` guards alone. Weaker, but still closes the escalation path,
-  since `verification_status` is read only by the verification screens.
-
-Resolve this before running `apply_pending_migrations.sql` against a live project.
+| onboarding wizards → `profiles.update({ verification_status: 'Submitted' })` | new user (non-admin) | yes — `profiles.verification_status` | allowed by the `'Submitted'` carve-out above |
 
 ---
 

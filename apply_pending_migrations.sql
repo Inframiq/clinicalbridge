@@ -387,31 +387,26 @@ CREATE POLICY "Shifts updatable by assigned doctor" ON public.shifts
 -- BEFORE UPDATE triggers reject a change to a privileged column unless the
 -- caller is a super admin. Idempotent: CREATE OR REPLACE + DROP TRIGGER IF EXISTS.
 --
--- !! KNOWN CONFLICT — READ BEFORE RUNNING ON A LIVE PROJECT !!
--- `guard_privileged_profile_update` guards profiles.verification_status, and all
--- three onboarding wizards (components/forms/onboarding-wizard.tsx:297,
--- hospital-onboarding-wizard.tsx:202, working-doctor-onboarding-wizard.tsx:235)
--- set `verification_status: 'Submitted'` on the user's OWN profile as that
--- (non-admin) user at the end of onboarding. With this trigger active, that
--- UPDATE raises and onboarding submission fails for every new signup.
--- The guard is deliberately NOT broadened here — widening it is a security
--- decision, not a mechanical fix. Pick one before running this file:
---   (a) allow the self-transition to the non-privileged 'Submitted' value only
---       (never 'Approved'), while still blocking role / verified; or
---   (b) move the 'Submitted' write behind a SECURITY DEFINER RPC; or
---   (c) drop verification_status from this trigger's guarded set and rely on the
---       `verified` + `role` guards (weaker: verification_status alone is read by
---       the verification/status screens, not by is_super_admin()).
+-- `role` and `verified` are strictly admin-only. `verification_status` carries a
+-- single deliberate carve-out for the onboarding wizards — see the function body.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.guard_privileged_profile_update()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NOT public.is_super_admin() AND (
-        NEW.role IS DISTINCT FROM OLD.role
-        OR NEW.verified IS DISTINCT FROM OLD.verified
-        OR NEW.verification_status IS DISTINCT FROM OLD.verification_status
-    ) THEN
-        RAISE EXCEPTION 'Not authorized to change a privileged profile column';
+    IF NOT public.is_super_admin() THEN
+        IF NEW.role IS DISTINCT FROM OLD.role THEN
+            RAISE EXCEPTION 'Not authorized to change profile role';
+        END IF;
+        IF NEW.verified IS DISTINCT FROM OLD.verified THEN
+            RAISE EXCEPTION 'Not authorized to change profile verified flag';
+        END IF;
+        -- A non-admin may move their own verification_status only to 'Submitted'
+        -- (initial onboarding submission, or re-submission after 'Needs Changes').
+        -- 'Under Review' / 'Needs Changes' / 'Approved' / 'Rejected' are admin-only.
+        IF NEW.verification_status IS DISTINCT FROM OLD.verification_status
+           AND NEW.verification_status <> 'Submitted' THEN
+            RAISE EXCEPTION 'Not authorized to set verification_status to %', NEW.verification_status;
+        END IF;
     END IF;
     RETURN NEW;
 END;
