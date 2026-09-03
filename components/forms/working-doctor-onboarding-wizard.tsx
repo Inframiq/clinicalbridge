@@ -27,7 +27,7 @@ import { useDoctors } from "@/hooks/use-doctors";
 import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
-import { describeSupabaseError } from "@/lib/supabase/services/utils";
+import { describeSupabaseError } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
 
 const MIN_DOB = isoDateYearsAgo(120);

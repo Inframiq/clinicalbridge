@@ -26,7 +26,7 @@ import { useFacilities } from "@/hooks/use-facilities";
 import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
-import { describeSupabaseError } from "@/lib/supabase/services/utils";
+import { describeSupabaseError } from "@/lib/supabase/log";
 
 const hospitalTypes = [
   "Multi-Specialty Hospital",
