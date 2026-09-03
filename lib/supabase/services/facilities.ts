@@ -79,14 +79,29 @@ export async function getFacilities(
 
 export async function updateFacilityVerificationInSupabase(
   id: string,
-  verification: HospitalVerification
-): Promise<void> {
-  if (!isUuid(id)) return;
-  const supabase = createClient();
+  verification: HospitalVerification,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateFacilityVerificationInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("facilities").update({ verification_status: verification }).eq("id", id);
+    const { data, error } = await client
+      .from("facilities")
+      .update({ verification_status: verification })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateFacilityVerificationInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updateFacilityVerificationInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 
@@ -98,16 +113,28 @@ export async function updateFacilityVerificationInSupabase(
  */
 export async function updateFacilityRegistrationStatusInSupabase(
   profileId: string | undefined,
-  status: "Approved" | "Rejected"
-): Promise<void> {
-  if (!isUuid(profileId)) return;
-  const supabase = createClient();
+  status: "Approved" | "Rejected",
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(profileId)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateFacilityRegistrationStatusInSupabase: skipped non-uuid id", profileId);
+    return { data: null, error: null };
+  }
   try {
-    await supabase
+    const { data, error } = await client
       .from("profiles")
       .update({ verification_status: status, verified: status === "Approved" })
-      .eq("id", profileId);
+      .eq("id", profileId)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateFacilityRegistrationStatusInSupabase(${profileId})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updateFacilityRegistrationStatusInSupabase(${profileId})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }

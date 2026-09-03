@@ -26,21 +26,42 @@ export async function getRatings(
   }
 }
 
-export async function createRatingInSupabase(rating: Rating): Promise<void> {
-  if (!isUuid(rating.id) || !isUuid(rating.shiftId) || !isUuid(rating.doctorId) || !isUuid(rating.facilityId)) return;
-  const supabase = createClient();
+export async function createRatingInSupabase(
+  rating: Rating,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (
+    !isUuid(rating.id) ||
+    !isUuid(rating.shiftId) ||
+    !isUuid(rating.doctorId) ||
+    !isUuid(rating.facilityId)
+  ) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("createRatingInSupabase: skipped non-uuid id", rating.id);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("ratings").insert({
-      id: rating.id,
-      shift_id: rating.shiftId,
-      direction: rating.direction,
-      doctor_id: rating.doctorId,
-      facility_id: rating.facilityId,
-      categories: rating.categories,
-      overall_score: rating.overallScore,
-      comment: rating.comment,
-    });
+    const { data, error } = await client
+      .from("ratings")
+      .insert({
+        id: rating.id,
+        shift_id: rating.shiftId,
+        direction: rating.direction,
+        doctor_id: rating.doctorId,
+        facility_id: rating.facilityId,
+        categories: rating.categories,
+        overall_score: rating.overallScore,
+        comment: rating.comment,
+      })
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`createRatingInSupabase(${rating.id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
-    reportSupabase("createRatingInSupabase", err);
+    reportSupabase(`createRatingInSupabase(${rating.id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }

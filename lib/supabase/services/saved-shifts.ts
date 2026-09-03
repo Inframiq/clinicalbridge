@@ -1,28 +1,62 @@
 import { createClient } from "@/lib/supabase/client";
 import type { SavedShift } from "@/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 
-export async function createSavedShiftInSupabase(savedShift: SavedShift): Promise<void> {
-  if (!isUuid(savedShift.id) || !isUuid(savedShift.doctorId) || !isUuid(savedShift.shiftId)) return;
-  const supabase = createClient();
+export async function createSavedShiftInSupabase(
+  savedShift: SavedShift,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(savedShift.id) || !isUuid(savedShift.doctorId) || !isUuid(savedShift.shiftId)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("createSavedShiftInSupabase: skipped non-uuid id", savedShift.id);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("saved_shifts").insert({
-      id: savedShift.id,
-      doctor_id: savedShift.doctorId,
-      shift_id: savedShift.shiftId,
-    });
+    const { data, error } = await client
+      .from("saved_shifts")
+      .insert({
+        id: savedShift.id,
+        doctor_id: savedShift.doctorId,
+        shift_id: savedShift.shiftId,
+      })
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`createSavedShiftInSupabase(${savedShift.id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
-    reportSupabase("createSavedShiftInSupabase", err);
+    reportSupabase(`createSavedShiftInSupabase(${savedShift.id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 
-export async function deleteSavedShiftInSupabase(doctorId: string, shiftId: string): Promise<void> {
-  if (!isUuid(doctorId) || !isUuid(shiftId)) return;
-  const supabase = createClient();
+export async function deleteSavedShiftInSupabase(
+  doctorId: string,
+  shiftId: string,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(doctorId) || !isUuid(shiftId)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("deleteSavedShiftInSupabase: skipped non-uuid id", shiftId);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("saved_shifts").delete().eq("doctor_id", doctorId).eq("shift_id", shiftId);
+    const { error } = await client
+      .from("saved_shifts")
+      .delete()
+      .eq("doctor_id", doctorId)
+      .eq("shift_id", shiftId);
+    if (error) {
+      reportSupabase(`deleteSavedShiftInSupabase(${shiftId})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data: null, error: null };
   } catch (err) {
     reportSupabase(`deleteSavedShiftInSupabase(${shiftId})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }

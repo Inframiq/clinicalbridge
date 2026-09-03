@@ -28,19 +28,34 @@ export async function getPayouts(
 
 export async function updatePayoutStatusInSupabase(
   id: string,
-  patch: Partial<Pick<PostShiftRecord, "status" | "approvedAt" | "paidAt">>
-): Promise<void> {
-  if (!isUuid(id)) return;
-  const supabase = createClient();
+  patch: Partial<Pick<PostShiftRecord, "status" | "approvedAt" | "paidAt">>,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updatePayoutStatusInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
   const update: Record<string, unknown> = {};
   if (patch.status !== undefined) update.status = patch.status;
   if (patch.approvedAt !== undefined) update.approved_at = patch.approvedAt;
   if (patch.paidAt !== undefined) update.paid_at = patch.paidAt;
-  if (Object.keys(update).length === 0) return;
+  if (Object.keys(update).length === 0) return { data: null, error: null };
 
   try {
-    await supabase.from("payouts").update(update).eq("id", id);
+    const { data, error } = await client
+      .from("payouts")
+      .update(update)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updatePayoutStatusInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updatePayoutStatusInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }

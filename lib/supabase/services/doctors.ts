@@ -67,20 +67,35 @@ export async function getDoctors(
 export async function updateDoctorVerificationInSupabase(
   id: string,
   verification: DoctorVerification,
-  verified: boolean
-): Promise<void> {
-  if (!isUuid(id)) return;
-  const supabase = createClient();
+  verified: boolean,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorVerificationInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
   try {
-    const { data: existing } = await supabase
+    const { data: existing } = await client
       .from("doctors")
       .select("verification_details")
       .eq("id", id)
       .maybeSingle();
     const merged = { ...(existing?.verification_details || {}), ...verification };
-    await supabase.from("doctors").update({ verified, verification_details: merged }).eq("id", id);
+    const { data, error } = await client
+      .from("doctors")
+      .update({ verified, verification_details: merged })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorVerificationInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updateDoctorVerificationInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 
@@ -92,17 +107,29 @@ export async function updateDoctorVerificationInSupabase(
  */
 export async function updateDoctorRegistrationStatusInSupabase(
   profileId: string | undefined,
-  status: "Approved" | "Rejected"
-): Promise<void> {
-  if (!isUuid(profileId)) return;
-  const supabase = createClient();
+  status: "Approved" | "Rejected",
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(profileId)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorRegistrationStatusInSupabase: skipped non-uuid id", profileId);
+    return { data: null, error: null };
+  }
   try {
-    await supabase
+    const { data, error } = await client
       .from("profiles")
       .update({ verification_status: status, verified: status === "Approved" })
-      .eq("id", profileId);
+      .eq("id", profileId)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorRegistrationStatusInSupabase(${profileId})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updateDoctorRegistrationStatusInSupabase(${profileId})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 
@@ -110,10 +137,14 @@ export async function updateDoctorProfileInSupabase(
   id: string,
   patch: Partial<
     Pick<Doctor, "specialty" | "subSpecialty" | "licenseNumber" | "licenseExpiry" | "yearsOfExperience" | "preferredLocations">
-  >
-): Promise<void> {
-  if (!isUuid(id)) return;
-  const supabase = createClient();
+  >,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorProfileInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
   const update: Record<string, unknown> = {};
   if (patch.specialty !== undefined) update.specialty = patch.specialty;
   if (patch.subSpecialty !== undefined) update.sub_specialty = patch.subSpecialty;
@@ -121,11 +152,22 @@ export async function updateDoctorProfileInSupabase(
   if (patch.licenseExpiry !== undefined) update.license_expiry = patch.licenseExpiry;
   if (patch.yearsOfExperience !== undefined) update.years_of_experience = patch.yearsOfExperience;
   if (patch.preferredLocations !== undefined) update.preferred_locations = patch.preferredLocations;
-  if (Object.keys(update).length === 0) return;
+  if (Object.keys(update).length === 0) return { data: null, error: null };
 
   try {
-    await supabase.from("doctors").update(update).eq("id", id);
+    const { data, error } = await client
+      .from("doctors")
+      .update(update)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorProfileInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`updateDoctorProfileInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }

@@ -29,32 +29,63 @@ export async function getNotifications(
   }
 }
 
-export async function markNotificationReadInSupabase(id: string): Promise<void> {
-  if (!isUuid(id)) return;
-  const supabase = createClient();
+export async function markNotificationReadInSupabase(
+  id: string,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("markNotificationReadInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("notifications").update({ read: true }).eq("id", id);
+    const { data, error } = await client
+      .from("notifications")
+      .update({ read: true })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`markNotificationReadInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
     reportSupabase(`markNotificationReadInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 
 export async function createNotificationInSupabase(
   userId: string,
-  notification: Pick<AppNotification, "id" | "title" | "body" | "type">
-): Promise<void> {
-  if (!isUuid(userId) || !isUuid(notification.id)) return;
-  const supabase = createClient();
+  notification: Pick<AppNotification, "id" | "title" | "body" | "type">,
+  client: SupabaseClient = createClient()
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isUuid(userId) || !isUuid(notification.id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("createNotificationInSupabase: skipped non-uuid id", notification.id);
+    return { data: null, error: null };
+  }
   try {
-    await supabase.from("notifications").insert({
-      id: notification.id,
-      user_id: userId,
-      title: notification.title,
-      body: notification.body,
-      type: notification.type,
-      read: false,
-    });
+    const { data, error } = await client
+      .from("notifications")
+      .insert({
+        id: notification.id,
+        user_id: userId,
+        title: notification.title,
+        body: notification.body,
+        type: notification.type,
+        read: false,
+      })
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`createNotificationInSupabase(${notification.id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
   } catch (err) {
-    reportSupabase("createNotificationInSupabase", err);
+    reportSupabase(`createNotificationInSupabase(${notification.id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
