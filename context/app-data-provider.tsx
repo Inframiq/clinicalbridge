@@ -260,7 +260,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   React.useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    // Gated on a signed-in user, not just on credentials: every table below is
+    // read-gated by `auth.role() = 'authenticated'`, so an anonymous visitor on
+    // `/`, `/login` or `/signup` would fire seven pointless parallel queries and
+    // — because RLS returns 0 rows rather than an error — overwrite the cached
+    // slices with `[]`. Re-runs on login, when `user?.id` becomes defined.
+    if (!isSupabaseConfigured || !user?.id) return;
     let cancelled = false;
     (async () => {
       const [shiftsR, replR, appsR, docsR, facsR, payR, ratR] = await Promise.all([
@@ -289,7 +294,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [setShifts, setReplacementRequests, setApplications, setDoctors, setFacilities, setPayments, setRatings]);
+  }, [user?.id, setShifts, setReplacementRequests, setApplications, setDoctors, setFacilities, setPayments, setRatings]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;

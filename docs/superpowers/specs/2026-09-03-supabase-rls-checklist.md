@@ -49,7 +49,7 @@ Existing `SELECT` policy (`auth.role() = 'authenticated'`) on `doctors` / `facil
 
 Target model:
 
-- **SELECT** — any authenticated user can read (`auth.role() = 'authenticated'`, or an owner-scoped `EXISTS` where the table is private). No service write chains a `.select()` after its `.insert()` / `.update()` today, so these SELECT policies are (a) prerequisites for the reads that already exist (`getReplacementRequests` / `getPayouts` / `getRatings` / `getShifts` / …) and (b) a prerequisite for adding write-then-read round-trips in Task 8.
+- **SELECT** — any authenticated user can read (`auth.role() = 'authenticated'`, or an owner-scoped `EXISTS` where the table is private). These SELECT policies are **required, not optional**: since Task 8 every `*InSupabase` writer chains `.select().single()` after its `.insert()` / `.update()` to return the persisted row, so a missing SELECT policy turns an otherwise successful write into a PGRST116 "0 rows" failure. They also back the reads that already exist (`getReplacementRequests` / `getPayouts` / `getRatings` / `getShifts` / …).
 - **INSERT / UPDATE / DELETE** — the owner (`auth.uid() = profile_id`, `auth.uid() = id`, `auth.uid() = user_id`, or an owner `EXISTS` sub-select through `doctors` / `facilities`) **or** `public.is_super_admin()`.
 
 ### `profiles`
@@ -83,8 +83,11 @@ Code paths: `auth-provider.tsx` insert; `updateDoctorRegistrationStatusInSupabas
 |---|---|---|
 | SELECT | `"Shifts viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK — 001, re-created in the RLS completion block (identical predicate). |
 | INSERT / UPDATE / DELETE | `"Shifts manageable by facility"` — `FOR ALL` with `USING` **and** `WITH CHECK` = `EXISTS (SELECT 1 FROM public.facilities WHERE id = shifts.facility_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Migration 001's version had no `WITH CHECK` and no super-admin branch; the completion block `DROP POLICY IF EXISTS "Shifts manageable by facility"` (same name → clean re-run) then recreates it hardened. |
+| UPDATE (additive) | `"Shifts updatable by assigned doctor"` — `FOR UPDATE USING (EXISTS (SELECT 1 FROM public.doctors d WHERE d.id = shifts.assigned_doctor_id AND d.profile_id = auth.uid()))`, **no `WITH CHECK`** | OK (RLS completion block). Postgres ORs permissive policies, so UPDATE on `shifts` is now facility-owner **OR** super-admin **OR** the assigned doctor. |
 
 Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `updateShiftAssignmentInSupabase` update.
+
+The assigned-doctor UPDATE predicate is what makes `respondToShiftAssignment` (`context/app-data-provider.tsx`) work. Its callers are **doctors** (`app/locum-tenens/my-shifts/page.tsx`, `components/dashboard/shift-details-sheet.tsx`); under the facility-owner policy alone their accept/decline UPDATE matched 0 rows, so the chained `.select().single()` returned PGRST116 and the provider rolled the optimistic update back with an error toast. The additive policy deliberately carries **no `WITH CHECK`**: declining sets `assigned_doctor_id` to `NULL`, and a `WITH CHECK` mirroring the `USING` clause would reject the resulting row. Facility-driven writes are still value-checked by the `"Shifts manageable by facility"` `WITH CHECK`.
 
 ### `applications`
 | Op | Policy | Status |
@@ -151,12 +154,80 @@ deferred.
 | `ratings` | SELECT, INSERT | SELECT: authenticated. INSERT: `EXISTS (… doctors … id = ratings.doctor_id …) OR EXISTS (… facilities … id = ratings.facility_id …) OR public.is_super_admin()`. |
 | `applications` | UPDATE (SELECT + INSERT already in 001) | `EXISTS (… doctors …) OR EXISTS (… shifts JOIN facilities … f.profile_id = auth.uid()) OR public.is_super_admin()`. |
 | `notifications` | INSERT + UPDATE (SELECT already in 001) | INSERT: `user_id = auth.uid() OR public.is_super_admin()`. UPDATE: `user_id = auth.uid()`. |
-| `shifts` | SELECT + `FOR ALL` re-created (replaces 001's) | SELECT: authenticated. Write: `EXISTS (… facilities … id = shifts.facility_id AND profile_id = auth.uid()) OR public.is_super_admin()` in both `USING` and `WITH CHECK`. |
+| `shifts` | SELECT + `FOR ALL` re-created (replaces 001's) + additive assigned-doctor UPDATE | SELECT: authenticated. Write: `EXISTS (… facilities … id = shifts.facility_id AND profile_id = auth.uid()) OR public.is_super_admin()` in both `USING` and `WITH CHECK`. Plus `"Shifts updatable by assigned doctor"` — `FOR UPDATE USING (EXISTS (… doctors d … d.id = shifts.assigned_doctor_id AND d.profile_id = auth.uid()))`, no `WITH CHECK`. |
 
 Every statement is `DROP POLICY IF EXISTS … ; CREATE POLICY …` (plus a no-op
 `ALTER TABLE … ENABLE ROW LEVEL SECURITY`), so the file remains safe to run more
 than once, per its header promise. `profiles` / `facilities` / `doctors` /
 `saved_shifts` were already fully covered by the migration 006 / 008 blocks.
+
+### Privileged-column guard triggers
+
+An RLS `USING` clause gates **which rows** an owner may update; it does **not**
+validate the resulting values. `"Users can update their own profile"`,
+`"Doctors editable by owner"` and `"Facilities editable by facility owner"` are
+all `FOR UPDATE USING (owner OR is_super_admin())` with **no `WITH CHECK`**, so
+from the browser with the anon key any authenticated user could run
+`update public.profiles set role = 'super_admin' where id = auth.uid();` —
+and `is_super_admin()` reads exactly `profiles.role`, so that one statement
+unlocks the admin branch of every other policy. The same shape let a doctor
+self-set `doctors.verified = true` (→ `mapDoctorRow` renders `status: "active"`)
+or reassign `doctors.profile_id` / `facilities.profile_id` to hijack a row.
+
+A plain `WITH CHECK` cannot express "column X may not change" (it cannot see the
+`OLD` row), and column `GRANT`s would also block the legitimate super-admin
+approval writes that run from the browser. So the guard is three
+`BEFORE UPDATE … FOR EACH ROW` triggers, appended at the end of
+`apply_pending_migrations.sql`. Each is `SECURITY DEFINER SET search_path =
+public, pg_temp` and idempotent (`CREATE OR REPLACE FUNCTION` +
+`DROP TRIGGER IF EXISTS`).
+
+| Trigger | Table | Guarded columns | Behaviour |
+|---|---|---|---|
+| `guard_privileged_profile_update` | `public.profiles` | `role`, `verified`, `verification_status` | `RAISE EXCEPTION` if any of the three is `IS DISTINCT FROM` its old value and `NOT public.is_super_admin()`. |
+| `guard_privileged_doctor_update` | `public.doctors` | `verified`, `profile_id` | Same shape — blocks doctor self-verification and ownership reassignment. |
+| `guard_privileged_facility_update` | `public.facilities` | `profile_id` | Blocks facility ownership reassignment / disowning. |
+
+Only `UPDATE` is guarded. `INSERT` is unaffected — `handle_new_user()` and the
+`auth-provider.tsx` fallback upsert (`onConflict: "id", ignoreDuplicates: true`
+→ `ON CONFLICT DO NOTHING`, never an UPDATE) both still work, and the doctors
+insert in the onboarding wizards writes `verified: false` on a fresh row.
+
+**Legitimate writes verified against the guards:**
+
+| Write | Caller | Touches a guarded column? | Verdict |
+|---|---|---|---|
+| `updateDoctorVerificationInSupabase` (`doctors.verified`, `verification_details`) | super-admin approval flow | yes (`doctors.verified`) | allowed — `is_super_admin()` is true |
+| `updateDoctorRegistrationStatusInSupabase` / `updateFacilityRegistrationStatusInSupabase` (`profiles.verification_status`, `profiles.verified`) | super-admin approval flow | yes (both) | allowed — `is_super_admin()` is true |
+| `updateDoctorProfileInSupabase` (specialty / license / locations / …) | doctor | no | allowed |
+| `updateFacilityVerificationInSupabase` (`facilities.verification_status` jsonb) | hospital | no — that is the jsonb checklist column on `facilities`, not `profiles.verification_status`, and `facilities` guards only `profile_id` | allowed |
+| onboarding wizards → `profiles.update({ completed_onboarding, full_name, phone })` | new user (non-admin) | no | allowed |
+| **onboarding wizards → `profiles.update({ verification_status: 'Submitted' })`** | **new user (non-admin)** | **yes** | **BLOCKED — see below** |
+
+#### ⚠️ Known conflict: onboarding writes `profiles.verification_status`
+
+All three wizards (`components/forms/onboarding-wizard.tsx:297`,
+`hospital-onboarding-wizard.tsx:202`,
+`working-doctor-onboarding-wizard.tsx:235`) set
+`verification_status: 'Submitted'` on the submitting user's own profile, as that
+non-admin user, in the same `.update()` that writes `completed_onboarding`,
+`full_name` and `phone`. `guard_privileged_profile_update` raises on that write,
+so **with the trigger active as written, onboarding submission fails for every
+new signup**.
+
+This is flagged rather than silently worked around, because widening the guard is
+a security decision. Options, in order of preference:
+
+- **(a)** Allow the self-transition to `'Submitted'` only (never `'Approved'` /
+  `'Rejected'`), while still blocking `role` and `verified` outright. `'Submitted'`
+  confers no privilege — `is_super_admin()` never reads it.
+- **(b)** Move the `'Submitted'` write behind a `SECURITY DEFINER` RPC that sets
+  only that value, and drop the column write from the wizards.
+- **(c)** Remove `verification_status` from the guarded set and rely on the
+  `role` + `verified` guards alone. Weaker, but still closes the escalation path,
+  since `verification_status` is read only by the verification screens.
+
+Resolve this before running `apply_pending_migrations.sql` against a live project.
 
 ---
 

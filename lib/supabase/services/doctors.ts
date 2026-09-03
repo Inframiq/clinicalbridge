@@ -42,8 +42,10 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
 }
 
 export async function getDoctors(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: Doctor[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("doctors")

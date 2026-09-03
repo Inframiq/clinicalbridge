@@ -8,9 +8,11 @@ import { mapNotificationRow } from "../mappers";
 
 export async function getNotifications(
   userId: string,
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: AppNotification[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
   if (!isUuid(userId)) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("notifications")

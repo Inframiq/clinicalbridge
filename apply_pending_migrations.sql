@@ -247,9 +247,11 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- matches migration 006 (owner OR public.is_super_admin()) and migration 008
 -- (owner via EXISTS through public.doctors / public.facilities).
 --
--- NOTE: no service write currently chains .select() after insert/update, but
--- these SELECT policies are the prerequisite for doing so (Task 8) and for the
--- reads that already exist (getReplacementRequests / getPayouts / getRatings).
+-- NOTE: these SELECT policies are REQUIRED, not optional. Every `*InSupabase`
+-- writer now chains `.select().single()` after its insert/update to return the
+-- persisted row (Task 8), so a missing SELECT policy turns an otherwise
+-- successful write into a PGRST116 "0 rows" error. They also back the reads that
+-- already exist (getReplacementRequests / getPayouts / getRatings).
 -- All statements idempotent: DROP POLICY IF EXISTS before each CREATE POLICY.
 -- -----------------------------------------------------------------------------
 ALTER TABLE public.replacement_requests ENABLE ROW LEVEL SECURITY;
@@ -357,3 +359,98 @@ CREATE POLICY "Shifts manageable by facility" ON public.shifts
         EXISTS (SELECT 1 FROM public.facilities WHERE id = shifts.facility_id AND profile_id = auth.uid())
         OR public.is_super_admin()
     );
+
+-- shifts (additive): the assigned doctor must be able to accept / decline their
+-- own assignment. `respondToShiftAssignment` (context/app-data-provider.tsx) is
+-- called from doctor screens (app/locum-tenens/my-shifts, shift-details-sheet)
+-- and UPDATEs public.shifts; the facility-owner policy above matches 0 rows for
+-- a doctor, so the write returned PGRST116 and the app rolled back.
+-- Postgres ORs permissive policies, so this widens UPDATE without weakening the
+-- facility policy. Deliberately NO `WITH CHECK`: declining nulls
+-- assigned_doctor_id, and a WITH CHECK mirroring the USING clause would then
+-- reject the decline. The facility policy's WITH CHECK still governs
+-- facility-driven writes.
+DROP POLICY IF EXISTS "Shifts updatable by assigned doctor" ON public.shifts;
+CREATE POLICY "Shifts updatable by assigned doctor" ON public.shifts
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM public.doctors d
+            WHERE d.id = shifts.assigned_doctor_id AND d.profile_id = auth.uid()
+        )
+    );
+
+-- -----------------------------------------------------------------------------
+-- Privileged-column guard: RLS USING clauses gate WHICH rows an owner may
+-- update, but not the resulting values. Without this, any authenticated user
+-- could self-set profiles.role / verified / verification_status (→ instant
+-- super_admin), or a doctor could self-verify or reassign ownership. These
+-- BEFORE UPDATE triggers reject a change to a privileged column unless the
+-- caller is a super admin. Idempotent: CREATE OR REPLACE + DROP TRIGGER IF EXISTS.
+--
+-- !! KNOWN CONFLICT — READ BEFORE RUNNING ON A LIVE PROJECT !!
+-- `guard_privileged_profile_update` guards profiles.verification_status, and all
+-- three onboarding wizards (components/forms/onboarding-wizard.tsx:297,
+-- hospital-onboarding-wizard.tsx:202, working-doctor-onboarding-wizard.tsx:235)
+-- set `verification_status: 'Submitted'` on the user's OWN profile as that
+-- (non-admin) user at the end of onboarding. With this trigger active, that
+-- UPDATE raises and onboarding submission fails for every new signup.
+-- The guard is deliberately NOT broadened here — widening it is a security
+-- decision, not a mechanical fix. Pick one before running this file:
+--   (a) allow the self-transition to the non-privileged 'Submitted' value only
+--       (never 'Approved'), while still blocking role / verified; or
+--   (b) move the 'Submitted' write behind a SECURITY DEFINER RPC; or
+--   (c) drop verification_status from this trigger's guarded set and rely on the
+--       `verified` + `role` guards (weaker: verification_status alone is read by
+--       the verification/status screens, not by is_super_admin()).
+-- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.guard_privileged_profile_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT public.is_super_admin() AND (
+        NEW.role IS DISTINCT FROM OLD.role
+        OR NEW.verified IS DISTINCT FROM OLD.verified
+        OR NEW.verification_status IS DISTINCT FROM OLD.verification_status
+    ) THEN
+        RAISE EXCEPTION 'Not authorized to change a privileged profile column';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS guard_privileged_profile_update ON public.profiles;
+CREATE TRIGGER guard_privileged_profile_update
+    BEFORE UPDATE ON public.profiles
+    FOR EACH ROW EXECUTE FUNCTION public.guard_privileged_profile_update();
+
+CREATE OR REPLACE FUNCTION public.guard_privileged_doctor_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT public.is_super_admin() AND (
+        NEW.verified IS DISTINCT FROM OLD.verified
+        OR NEW.profile_id IS DISTINCT FROM OLD.profile_id
+    ) THEN
+        RAISE EXCEPTION 'Not authorized to change a privileged doctor column';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS guard_privileged_doctor_update ON public.doctors;
+CREATE TRIGGER guard_privileged_doctor_update
+    BEFORE UPDATE ON public.doctors
+    FOR EACH ROW EXECUTE FUNCTION public.guard_privileged_doctor_update();
+
+CREATE OR REPLACE FUNCTION public.guard_privileged_facility_update()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT public.is_super_admin() AND NEW.profile_id IS DISTINCT FROM OLD.profile_id THEN
+        RAISE EXCEPTION 'Not authorized to reassign facility ownership';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
+
+DROP TRIGGER IF EXISTS guard_privileged_facility_update ON public.facilities;
+CREATE TRIGGER guard_privileged_facility_update
+    BEFORE UPDATE ON public.facilities
+    FOR EACH ROW EXECUTE FUNCTION public.guard_privileged_facility_update();

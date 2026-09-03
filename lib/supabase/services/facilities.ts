@@ -55,8 +55,10 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
 }
 
 export async function getFacilities(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: Facility[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("facilities")

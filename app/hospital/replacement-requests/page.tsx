@@ -1,6 +1,5 @@
 "use client";
 
-import { toast } from "sonner";
 import { CheckCircle2, XCircle, PencilLine, ClipboardList, Clock3, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -126,13 +125,19 @@ export default function ReplacementRequestsPage() {
                                     />
                                     <Button
                                       size="sm"
-                                      onClick={() => {
-                                        assignDoctorToShift(shift.id, applicant.id);
-                                        applicants
-                                          .filter((a) => a.id !== app.id)
-                                          .forEach((a) => updateApplicationStatus(a.id, "rejected"));
-                                        updateReplacementRequestStatus(request.id, "filled");
-                                        toast.success(`Dr. ${applicant.lastName} confirmed for ${shift.title}`);
+                                      onClick={async () => {
+                                        // Sequential awaits so each mutation's own
+                                        // rollback+error toast lands in order. No
+                                        // success toast: these mutations are
+                                        // optimistic and non-throwing, so an
+                                        // unconditional green toast used to fire
+                                        // alongside the red one on failure. The
+                                        // card visibly moves to "Filled" on success.
+                                        await assignDoctorToShift(shift.id, applicant.id);
+                                        for (const a of applicants.filter((x) => x.id !== app.id)) {
+                                          await updateApplicationStatus(a.id, "rejected");
+                                        }
+                                        await updateReplacementRequestStatus(request.id, "filled");
                                       }}
                                     >
                                       Confirm
@@ -160,8 +165,7 @@ export default function ReplacementRequestsPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            updateReplacementRequestStatus(request.id, "rejected");
-                            toast.success("Request rejected");
+                            void updateReplacementRequestStatus(request.id, "rejected");
                           }}
                         >
                           <XCircle className="size-4" /> Reject
@@ -169,8 +173,7 @@ export default function ReplacementRequestsPage() {
                         <Button
                           size="sm"
                           onClick={() => {
-                            approveReplacementRequest(request.id);
-                            toast.success("Approved — vacancy published to Locum Tenens doctors");
+                            void approveReplacementRequest(request.id);
                           }}
                         >
                           <CheckCircle2 className="size-4" /> Approve

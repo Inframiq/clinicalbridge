@@ -7,8 +7,10 @@ import { reportSupabase, describeSupabaseError } from "../log";
 import { mapPayoutRow } from "../mappers";
 
 export async function getPayouts(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: PostShiftRecord[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("payouts")

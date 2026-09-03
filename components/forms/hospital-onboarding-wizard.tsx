@@ -26,7 +26,7 @@ import { useFacilities } from "@/hooks/use-facilities";
 import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
-import { describeSupabaseError } from "@/lib/supabase/log";
+import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 
 const hospitalTypes = [
   "Multi-Specialty Hospital",
@@ -131,7 +131,7 @@ export function HospitalOnboardingWizard() {
     setUploadingKey(null);
 
     if (error || !metadata) {
-      console.error(`Document upload failed for ${file.name}:`, error);
+      reportSupabase(`onboarding.documentUpload(${file.name})`, error, { level: "error" });
       toast.error(error?.message || `Failed to upload ${file.name}`);
       return;
     }
@@ -193,7 +193,7 @@ export function HospitalOnboardingWizard() {
           });
 
           if (facilityInsertErr) {
-            console.error("Facilities insert DB Error:", describeSupabaseError(facilityInsertErr));
+            reportSupabase("onboarding.facilityInsert", facilityInsertErr, { level: "error" });
             toast.error(`Database Insert Failed: ${describeSupabaseError(facilityInsertErr)}`);
             setIsSubmitting(false);
             return;
@@ -207,7 +207,7 @@ export function HospitalOnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("Profile update DB Error:", describeSupabaseError(profileUpdateErr));
+            reportSupabase("onboarding.profileUpdate", profileUpdateErr, { level: "error" });
             toast.error(`Profile Update Failed: ${describeSupabaseError(profileUpdateErr)}`);
             setIsSubmitting(false);
             return;
@@ -239,7 +239,7 @@ export function HospitalOnboardingWizard() {
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : describeSupabaseError(err);
-        console.error("Submission Exception:", errorMsg);
+        reportSupabase("onboarding.submit", err, { level: "error" });
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);

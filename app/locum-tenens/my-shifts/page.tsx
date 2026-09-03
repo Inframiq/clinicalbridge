@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { toast } from "sonner";
 import { CalendarCheck, CheckCircle2, Clock3, Wallet, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
@@ -67,11 +66,18 @@ export default function MyShiftsPage() {
         if (row.original.status !== "pending") return null;
         return (
           <div className="flex items-center justify-end gap-2">
+            {/*
+              `respondToShiftAssignment` is optimistic: it applies the new status
+              immediately, and on a write failure rolls back and raises its own
+              error toast. Firing an unconditional `toast.success` alongside it
+              produced a green+red pair while the row snapped back, so the success
+              toast is gone — accepting/declining already flips the visible status
+              badge and removes these buttons from the row that was clicked.
+            */}
             <Button
               size="sm"
               onClick={() => {
-                respondToShiftAssignment(row.original.id, true);
-                toast.success(`Accepted ${row.original.title}`);
+                void respondToShiftAssignment(row.original.id, true);
               }}
             >
               <CheckCircle2 className="size-4" /> Accept
@@ -80,8 +86,7 @@ export default function MyShiftsPage() {
               size="sm"
               variant="outline"
               onClick={() => {
-                respondToShiftAssignment(row.original.id, false);
-                toast.success(`Declined ${row.original.title}`);
+                void respondToShiftAssignment(row.original.id, false);
               }}
             >
               <XCircle className="size-4" /> Decline

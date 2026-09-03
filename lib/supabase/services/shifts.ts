@@ -35,8 +35,10 @@ export function mapApplicationRow(item: Record<string, any>): Application {
 }
 
 export async function getShifts(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: Shift[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("shifts")
@@ -56,8 +58,10 @@ export async function getShifts(
 }
 
 export async function getReplacementRequests(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: ReplacementRequest[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("replacement_requests")
@@ -77,8 +81,10 @@ export async function getReplacementRequests(
 }
 
 export async function getApplications(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: Application[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("applications")

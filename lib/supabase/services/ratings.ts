@@ -7,8 +7,10 @@ import { reportSupabase, describeSupabaseError } from "../log";
 import { mapRatingRow } from "../mappers";
 
 export async function getRatings(
-  client: SupabaseClient = createClient()
+  client?: SupabaseClient
 ): Promise<{ data: Rating[]; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: [], error: null };
+  client ??= createClient();
   try {
     const { data, error } = await client
       .from("ratings")
