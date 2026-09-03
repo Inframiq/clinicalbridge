@@ -1,8 +1,27 @@
 import { createClient } from "@/lib/supabase/client";
 import type { HospitalVerification } from "@/types";
-import { facilities as initialFacilities, type Facility } from "@/lib/mock-data/organizations";
+import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
+
+export interface Facility {
+  id: string;
+  name: string;
+  city: string;
+  registrationNumber: string;
+  governmentLicense: string;
+  hospitalType: string;
+  contactPerson: string;
+  email: string;
+  phone: string;
+  verification: HospitalVerification;
+  status: "pending" | "verified";
+  uploadedDocuments?: Record<string, UploadedFileMetadata>;
+  profileId?: string;
+  /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
+  registrationStatus?: string;
+}
 
 const EMPTY_VERIFICATION: HospitalVerification = {
   governmentRegistration: false,
@@ -34,26 +53,27 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
   } satisfies Facility;
 }
 
-export async function getFacilities(): Promise<Facility[]> {
-  const supabase = createClient();
+export async function getFacilities(
+  client: SupabaseClient = createClient()
+): Promise<{ data: Facility[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("facilities")
       .select("*, profiles(verification_status)")
       .order("created_at", { ascending: false });
 
     if (error) {
       reportSupabase("getFacilities", error);
-      return initialFacilities;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
     // A real, successful query with zero rows means zero real hospitals have
     // registered yet - that must render as an empty state, not silently
     // fall back to seed/mock data that would look like real registrations.
-    return (data ?? []).map(mapFacilityRow);
+    return { data: (data ?? []).map(mapFacilityRow), error: null };
   } catch (err) {
     reportSupabase("getFacilities", err);
-    return initialFacilities;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 

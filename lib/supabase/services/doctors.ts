@@ -1,8 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Doctor, DoctorVerification } from "@/types";
-import { doctors as initialDoctors } from "@/lib/mock-data/doctors";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function mapDoctorRow(item: Record<string, any>): Doctor {
@@ -40,26 +40,27 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
   } satisfies Doctor;
 }
 
-export async function getDoctors(): Promise<Doctor[]> {
-  const supabase = createClient();
+export async function getDoctors(
+  client: SupabaseClient = createClient()
+): Promise<{ data: Doctor[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("doctors")
       .select("*, profiles(email, phone, verification_status)")
       .order("created_at", { ascending: false });
 
     if (error) {
       reportSupabase("getDoctors", error);
-      return initialDoctors;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
     // A real, successful query with zero rows means zero real doctors have
     // registered yet - that must render as an empty state, not silently
     // fall back to seed/mock data that would look like real registrations.
-    return (data ?? []).map(mapDoctorRow);
+    return { data: (data ?? []).map(mapDoctorRow), error: null };
   } catch (err) {
     reportSupabase("getDoctors", err);
-    return initialDoctors;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 

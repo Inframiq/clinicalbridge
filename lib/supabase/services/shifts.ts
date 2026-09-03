@@ -1,85 +1,98 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Shift, ReplacementRequest, Application } from "@/types";
-import { shifts as initialShifts } from "@/lib/mock-data/shifts";
-import { replacementRequests as initialReplacementRequests } from "@/lib/mock-data/replacement-requests";
-import { applications as initialApplications } from "@/lib/mock-data/applications";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 import { mapShiftRow } from "../mappers";
 
-export async function getShifts(): Promise<Shift[]> {
-  const supabase = createClient();
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapReplacementRequestRow(item: Record<string, any>): ReplacementRequest {
+  return {
+    id: item.id,
+    shiftId: item.shift_id,
+    requestingDoctorId: item.requesting_doctor_id,
+    reason: item.reason,
+    preferredReplacementType: item.preferred_replacement_type,
+    hourlyCompensation: Number(item.hourly_compensation),
+    notes: item.notes,
+    status: item.status,
+    requestedAt: item.requested_at,
+    reviewedAt: item.reviewed_at,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapApplicationRow(item: Record<string, any>): Application {
+  return {
+    id: item.id,
+    shiftId: item.shift_id,
+    doctorId: item.doctor_id,
+    status: item.status,
+    appliedAt: item.applied_at,
+    matchScorePct: item.match_score_pct,
+  };
+}
+
+export async function getShifts(
+  client: SupabaseClient = createClient()
+): Promise<{ data: Shift[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("shifts")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
       reportSupabase("getShifts", error);
-      return initialShifts;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map(mapShiftRow);
+    return { data: (data ?? []).map(mapShiftRow), error: null };
   } catch (err) {
     reportSupabase("getShifts", err);
-    return initialShifts;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 
-export async function getReplacementRequests(): Promise<ReplacementRequest[]> {
-  const supabase = createClient();
+export async function getReplacementRequests(
+  client: SupabaseClient = createClient()
+): Promise<{ data: ReplacementRequest[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("replacement_requests")
       .select("*")
       .order("requested_at", { ascending: false });
 
-    if (error || !data || data.length === 0) {
-      return initialReplacementRequests;
+    if (error) {
+      reportSupabase("getReplacementRequests", error);
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map((item) => ({
-      id: item.id,
-      shiftId: item.shift_id,
-      requestingDoctorId: item.requesting_doctor_id,
-      reason: item.reason,
-      preferredReplacementType: item.preferred_replacement_type,
-      hourlyCompensation: Number(item.hourly_compensation),
-      notes: item.notes,
-      status: item.status,
-      requestedAt: item.requested_at,
-      reviewedAt: item.reviewed_at,
-    }));
+    return { data: (data ?? []).map(mapReplacementRequestRow), error: null };
   } catch (err) {
     reportSupabase("getReplacementRequests", err);
-    return initialReplacementRequests;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 
-export async function getApplications(): Promise<Application[]> {
-  const supabase = createClient();
+export async function getApplications(
+  client: SupabaseClient = createClient()
+): Promise<{ data: Application[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("applications")
       .select("*")
       .order("applied_at", { ascending: false });
 
-    if (error || !data || data.length === 0) {
-      return initialApplications;
+    if (error) {
+      reportSupabase("getApplications", error);
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map((item) => ({
-      id: item.id,
-      shiftId: item.shift_id,
-      doctorId: item.doctor_id,
-      status: item.status,
-      appliedAt: item.applied_at,
-      matchScorePct: item.match_score_pct,
-    }));
+    return { data: (data ?? []).map(mapApplicationRow), error: null };
   } catch (err) {
     reportSupabase("getApplications", err);
-    return initialApplications;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 

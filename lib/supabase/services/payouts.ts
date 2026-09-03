@@ -1,27 +1,28 @@
 import { createClient } from "@/lib/supabase/client";
 import type { PostShiftRecord } from "@/types";
-import { postShiftRecords as initialPayments } from "@/lib/mock-data/payments";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 import { mapPayoutRow } from "../mappers";
 
-export async function getPayouts(): Promise<PostShiftRecord[]> {
-  const supabase = createClient();
+export async function getPayouts(
+  client: SupabaseClient = createClient()
+): Promise<{ data: PostShiftRecord[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("payouts")
       .select("*")
       .order("submitted_at", { ascending: false });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
       reportSupabase("getPayouts", error);
-      return initialPayments;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map(mapPayoutRow);
+    return { data: (data ?? []).map(mapPayoutRow), error: null };
   } catch (err) {
     reportSupabase("getPayouts", err);
-    return initialPayments;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 

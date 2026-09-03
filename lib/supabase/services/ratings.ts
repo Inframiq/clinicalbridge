@@ -1,27 +1,28 @@
 import { createClient } from "@/lib/supabase/client";
 import type { Rating } from "@/types";
-import { ratings as initialRatings } from "@/lib/mock-data/ratings";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 import { mapRatingRow } from "../mappers";
 
-export async function getRatings(): Promise<Rating[]> {
-  const supabase = createClient();
+export async function getRatings(
+  client: SupabaseClient = createClient()
+): Promise<{ data: Rating[]; error: string | null }> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("ratings")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (error || !data || data.length === 0) {
+    if (error) {
       reportSupabase("getRatings", error);
-      return initialRatings;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map(mapRatingRow);
+    return { data: (data ?? []).map(mapRatingRow), error: null };
   } catch (err) {
     reportSupabase("getRatings", err);
-    return initialRatings;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 

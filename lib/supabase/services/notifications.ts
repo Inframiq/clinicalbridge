@@ -1,28 +1,31 @@
 import { createClient } from "@/lib/supabase/client";
 import type { AppNotification } from "@/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
-import { reportSupabase } from "../log";
+import { reportSupabase, describeSupabaseError } from "../log";
 import { mapNotificationRow } from "../mappers";
 
-export async function getNotifications(userId: string): Promise<AppNotification[] | null> {
-  if (!isUuid(userId)) return null;
-  const supabase = createClient();
+export async function getNotifications(
+  userId: string,
+  client: SupabaseClient = createClient()
+): Promise<{ data: AppNotification[]; error: string | null }> {
+  if (!isUuid(userId)) return { data: [], error: null };
   try {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from("notifications")
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (error || !data) {
+    if (error) {
       reportSupabase("getNotifications", error);
-      return null;
+      return { data: [], error: describeSupabaseError(error) };
     }
 
-    return data.map((item) => mapNotificationRow(item));
+    return { data: (data ?? []).map((item) => mapNotificationRow(item)), error: null };
   } catch (err) {
     reportSupabase("getNotifications", err);
-    return null;
+    return { data: [], error: describeSupabaseError(err) };
   }
 }
 
