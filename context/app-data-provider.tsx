@@ -63,6 +63,7 @@ import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/rati
 import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
 import { reportSupabase } from "@/lib/supabase/log";
+import { OfflineModeBanner } from "@/components/layout/offline-mode-banner";
 
 export type NewShiftInput = Pick<
   Shift,
@@ -262,37 +263,28 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured) return;
     let cancelled = false;
     (async () => {
-      try {
-        const [shiftsR, replR, appsR, docsR, facsR, payR, ratR] = await Promise.all([
-          getShifts(),
-          getReplacementRequests(),
-          getApplications(),
-          getDoctors(),
-          getFacilities(),
-          getPayouts(),
-          getRatings(),
-        ]);
-        if (cancelled) return;
-        // Each slice is set UNCONDITIONALLY when there is no error — including an
-        // empty array. A successful query with zero rows means zero real records
-        // exist and must replace the empty/optimistic state, not leave stale rows.
-        if (shiftsR.error) reportSupabase("AppDataProvider.sync", shiftsR.error);
-        else setShifts(shiftsR.data);
-        if (replR.error) reportSupabase("AppDataProvider.sync", replR.error);
-        else setReplacementRequests(replR.data);
-        if (appsR.error) reportSupabase("AppDataProvider.sync", appsR.error);
-        else setApplications(appsR.data);
-        if (docsR.error) reportSupabase("AppDataProvider.sync", docsR.error);
-        else setDoctors(docsR.data);
-        if (facsR.error) reportSupabase("AppDataProvider.sync", facsR.error);
-        else setFacilities(facsR.data);
-        if (payR.error) reportSupabase("AppDataProvider.sync", payR.error);
-        else setPayments(payR.data);
-        if (ratR.error) reportSupabase("AppDataProvider.sync", ratR.error);
-        else setRatings(ratR.data);
-      } catch (err) {
-        reportSupabase("AppDataProvider.sync", err);
-      }
+      const [shiftsR, replR, appsR, docsR, facsR, payR, ratR] = await Promise.all([
+        getShifts(),
+        getReplacementRequests(),
+        getApplications(),
+        getDoctors(),
+        getFacilities(),
+        getPayouts(),
+        getRatings(),
+      ]);
+      if (cancelled) return;
+      // Each slice is set UNCONDITIONALLY when there is no error — including an
+      // empty array. A successful query with zero rows means zero real records
+      // exist and must replace the empty/optimistic state, not leave stale rows.
+      // On error the slice keeps its seed/current value; each `getX` already
+      // called `reportSupabase` internally before returning its error string.
+      if (!shiftsR.error) setShifts(shiftsR.data);
+      if (!replR.error) setReplacementRequests(replR.data);
+      if (!appsR.error) setApplications(appsR.data);
+      if (!docsR.error) setDoctors(docsR.data);
+      if (!facsR.error) setFacilities(facsR.data);
+      if (!payR.error) setPayments(payR.data);
+      if (!ratR.error) setRatings(ratR.data);
     })();
     return () => {
       cancelled = true;
@@ -300,6 +292,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   }, [setShifts, setReplacementRequests, setApplications, setDoctors, setFacilities, setPayments, setRatings]);
 
   React.useEffect(() => {
+    if (!isSupabaseConfigured) return;
     const supabase = createClient();
     const channel = supabase
       .channel("super-admin-approvals")
@@ -327,7 +320,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           );
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status !== "SUBSCRIBED" && status !== "CLOSED")
+          reportSupabase("AppDataProvider.realtime", `channel status: ${status}`);
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -1138,7 +1134,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
+  return (
+    <AppDataContext.Provider value={value}>
+      {children}
+      <OfflineModeBanner />
+    </AppDataContext.Provider>
+  );
 }
 
 export function useAppData() {
