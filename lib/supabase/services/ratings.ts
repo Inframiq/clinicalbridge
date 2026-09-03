@@ -3,6 +3,7 @@ import type { Rating } from "@/types";
 import { ratings as initialRatings } from "@/lib/mock-data/ratings";
 import { isUuid } from "./utils";
 import { reportSupabase } from "../log";
+import { mapRatingRow } from "../mappers";
 
 export async function getRatings(): Promise<Rating[]> {
   const supabase = createClient();
@@ -17,18 +18,7 @@ export async function getRatings(): Promise<Rating[]> {
       return initialRatings;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: Record<string, any>) => ({
-      id: item.id,
-      shiftId: item.shift_id,
-      direction: item.direction,
-      doctorId: item.doctor_id,
-      facilityId: item.facility_id,
-      categories: item.categories || {},
-      overallScore: Number(item.overall_score),
-      comment: item.comment ?? undefined,
-      createdAt: item.created_at,
-    }));
+    return data.map(mapRatingRow);
   } catch (err) {
     reportSupabase("getRatings", err);
     return initialRatings;

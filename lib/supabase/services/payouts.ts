@@ -3,6 +3,7 @@ import type { PostShiftRecord } from "@/types";
 import { postShiftRecords as initialPayments } from "@/lib/mock-data/payments";
 import { isUuid } from "./utils";
 import { reportSupabase } from "../log";
+import { mapPayoutRow } from "../mappers";
 
 export async function getPayouts(): Promise<PostShiftRecord[]> {
   const supabase = createClient();
@@ -17,23 +18,7 @@ export async function getPayouts(): Promise<PostShiftRecord[]> {
       return initialPayments;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: Record<string, any>) => ({
-      id: item.id,
-      shiftId: item.shift_id,
-      doctorId: item.doctor_id,
-      hours: Number(item.hours),
-      hourlyRate: Number(item.hourly_rate),
-      grossPay: Number(item.gross_pay),
-      platformFeePct: Number(item.platform_fee_pct),
-      netPayout: Number(item.net_payout),
-      status: item.status,
-      submittedAt: item.submitted_at,
-      approvedAt: item.approved_at ?? undefined,
-      paidAt: item.paid_at ?? undefined,
-      hasTimesheet: Boolean(item.has_timesheet),
-      hasClinicalNotes: Boolean(item.has_clinical_notes),
-    }));
+    return data.map(mapPayoutRow);
   } catch (err) {
     reportSupabase("getPayouts", err);
     return initialPayments;

@@ -5,6 +5,7 @@ import { replacementRequests as initialReplacementRequests } from "@/lib/mock-da
 import { applications as initialApplications } from "@/lib/mock-data/applications";
 import { isUuid } from "./utils";
 import { reportSupabase } from "../log";
+import { mapShiftRow } from "../mappers";
 
 export async function getShifts(): Promise<Shift[]> {
   const supabase = createClient();
@@ -19,30 +20,7 @@ export async function getShifts(): Promise<Shift[]> {
       return initialShifts;
     }
 
-    return data.map((item) => ({
-      id: item.id,
-      title: item.title,
-      department: item.department_name,
-      facilityName: item.facility_name,
-      facilityId: item.facility_id,
-      location: item.location || { address: "", city: "", state: "", lat: 0, lng: 0 },
-      date: item.date,
-      startTime: item.start_time,
-      endTime: item.end_time,
-      shiftType: item.shift_type,
-      subSpecialty: item.sub_specialty,
-      hourlyRate: Number(item.hourly_rate),
-      doctorsNeeded: item.doctors_needed,
-      experienceLevel: item.experience_level,
-      description: item.description || "",
-      status: item.status,
-      codeRed: Boolean(item.code_red),
-      assignedDoctorId: item.assigned_doctor_id,
-      requiredQualification: item.required_qualification,
-      supervisorName: item.supervisor_name,
-      emergencyContact: item.emergency_contact,
-      applicationDeadline: item.application_deadline,
-    }));
+    return data.map(mapShiftRow);
   } catch (err) {
     reportSupabase("getShifts", err);
     return initialShifts;

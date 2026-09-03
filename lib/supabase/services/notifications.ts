@@ -1,8 +1,8 @@
-import { formatDistanceToNow } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import type { AppNotification } from "@/types";
 import { isUuid } from "./utils";
 import { reportSupabase } from "../log";
+import { mapNotificationRow } from "../mappers";
 
 export async function getNotifications(userId: string): Promise<AppNotification[] | null> {
   if (!isUuid(userId)) return null;
@@ -19,15 +19,7 @@ export async function getNotifications(userId: string): Promise<AppNotification[
       return null;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return data.map((item: Record<string, any>) => ({
-      id: item.id,
-      title: item.title,
-      body: item.body,
-      timestamp: formatDistanceToNow(new Date(item.created_at), { addSuffix: true }),
-      read: Boolean(item.read),
-      type: item.type,
-    }));
+    return data.map((item) => mapNotificationRow(item));
   } catch (err) {
     reportSupabase("getNotifications", err);
     return null;
