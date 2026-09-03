@@ -25,6 +25,7 @@ import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
 import { useAutosave } from "@/hooks/use-autosave";
+import { useHasMounted } from "@/hooks/use-has-mounted";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError } from "@/lib/supabase/log";
@@ -104,6 +105,13 @@ export function WorkingDoctorOnboardingWizard() {
   const router = useRouter();
   const { login, refreshProfile } = useAuthRole();
   const { registerSelfDoctor } = useDoctors();
+  // Date-input bounds below come from module-level `todayIsoDate()` /
+  // `isoDateYears*()` consts, which are evaluated once at module load and so can
+  // differ by a calendar day between a long-lived server process and the
+  // freshly-loaded client bundle. Gate them behind `useHasMounted` so the
+  // server and first client render both omit min/max, then apply the
+  // day-accurate bounds after hydration (interaction is always post-mount).
+  const mounted = useHasMounted();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -330,7 +338,13 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.dob}>
                       <FieldLabel htmlFor="dob">Date of Birth *</FieldLabel>
                       <FieldContent>
-                        <Input id="dob" type="date" min={MIN_DOB} max={MAX_DOB} {...register("dob")} />
+                        <Input
+                          id="dob"
+                          type="date"
+                          min={mounted ? MIN_DOB : undefined}
+                          max={mounted ? MAX_DOB : undefined}
+                          {...register("dob")}
+                        />
                         <FieldError errors={[errors.dob]} />
                       </FieldContent>
                     </Field>
@@ -394,8 +408,8 @@ export function WorkingDoctorOnboardingWizard() {
                         <Input
                           id="licenseExpiry"
                           type="date"
-                          min={MIN_LICENSE_EXPIRY}
-                          max={MAX_LICENSE_EXPIRY}
+                          min={mounted ? MIN_LICENSE_EXPIRY : undefined}
+                          max={mounted ? MAX_LICENSE_EXPIRY : undefined}
                           {...register("licenseExpiry")}
                         />
                         <FieldError errors={[errors.licenseExpiry]} />
