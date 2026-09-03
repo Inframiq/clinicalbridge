@@ -99,7 +99,7 @@ Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `upd
 |---|---|---|
 | SELECT | `"Replacement requests viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK (RLS completion block). 001 enabled RLS with no policy → `getReplacementRequests` was fully denied; now readable. |
 | INSERT | `"Replacement requests insertable by requesting doctor"` — `EXISTS (SELECT 1 FROM public.doctors WHERE id = replacement_requests.requesting_doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Backs `createReplacementRequestInSupabase`. |
-| UPDATE | `"Replacement requests updatable by requesting doctor or admin"` — same `EXISTS` shape `OR public.is_super_admin()` | OK (RLS completion block). Backs `updateReplacementRequestStatusInSupabase`, `modifyReplacementRequestInSupabase`. |
+| UPDATE | `"Replacement requests updatable by requesting doctor or admin"` — requesting doctor `EXISTS (… doctors … id = requesting_doctor_id AND profile_id = auth.uid())` **OR** facility owner `EXISTS (SELECT 1 FROM public.shifts s JOIN public.facilities f ON s.facility_id = f.id WHERE s.id = replacement_requests.shift_id AND f.profile_id = auth.uid())` **OR** `public.is_super_admin()` | OK (RLS completion block). Backs `updateReplacementRequestStatusInSupabase`, `modifyReplacementRequestInSupabase` — the real callers are **hospital** users (`app/hospital/replacement-requests/page.tsx`) approving / filling / rejecting, so the facility-owner branch is what makes those UPDATEs match rows. |
 | DELETE | none | Not needed — no cancel-by-delete path exists. |
 
 ### `payouts`
@@ -107,7 +107,7 @@ Code paths: `createShiftInSupabase` insert, `updateShiftStatusInSupabase` / `upd
 |---|---|---|
 | SELECT | `"Payouts viewable by authenticated users"` — `auth.role() = 'authenticated'` | OK (RLS completion block). 001 enabled RLS with no policy → `getPayouts` was fully denied; now readable. |
 | INSERT | none | Not needed yet — no service method creates a payout. Add an owner/admin `WITH CHECK` when one lands. |
-| UPDATE | `"Payouts updatable by owner doctor or admin"` — `EXISTS (SELECT 1 FROM public.doctors WHERE id = payouts.doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()` | OK (RLS completion block). Backs `updatePayoutStatusInSupabase` (`status`, `approved_at`, `paid_at`). |
+| UPDATE | `"Payouts updatable by owner doctor or admin"` — payout's doctor `EXISTS (SELECT 1 FROM public.doctors WHERE id = payouts.doctor_id AND profile_id = auth.uid())` **OR** facility owner `EXISTS (SELECT 1 FROM public.shifts s JOIN public.facilities f ON s.facility_id = f.id WHERE s.id = payouts.shift_id AND f.profile_id = auth.uid())` **OR** `public.is_super_admin()` | OK (RLS completion block). Backs `updatePayoutStatusInSupabase` (`status`, `approved_at`, `paid_at`) — the real caller is the **hospital** approving payment (`app/hospital/post-shift/page.tsx`), hence the facility-owner branch. |
 | DELETE | none | Not needed. |
 
 ### `ratings`
@@ -146,8 +146,8 @@ deferred.
 
 | Table | Added by the RLS completion block | Predicate |
 |---|---|---|
-| `replacement_requests` | SELECT, INSERT, UPDATE | SELECT: authenticated. INSERT/UPDATE: `EXISTS (… doctors … id = requesting_doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()`. |
-| `payouts` | SELECT, UPDATE | SELECT: authenticated. UPDATE: `EXISTS (… doctors … id = payouts.doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()`. |
+| `replacement_requests` | SELECT, INSERT, UPDATE | SELECT: authenticated. INSERT: `EXISTS (… doctors … id = requesting_doctor_id AND profile_id = auth.uid()) OR public.is_super_admin()`. UPDATE: requesting-doctor `EXISTS` **OR** facility-owner `EXISTS (… shifts s JOIN facilities f … s.id = replacement_requests.shift_id AND f.profile_id = auth.uid())` **OR** `public.is_super_admin()` (hospitals are the real UPDATE callers). |
+| `payouts` | SELECT, UPDATE | SELECT: authenticated. UPDATE: payout-doctor `EXISTS (… doctors … id = payouts.doctor_id …)` **OR** facility-owner `EXISTS (… shifts s JOIN facilities f … s.id = payouts.shift_id AND f.profile_id = auth.uid())` **OR** `public.is_super_admin()` (hospital approves payment). |
 | `ratings` | SELECT, INSERT | SELECT: authenticated. INSERT: `EXISTS (… doctors … id = ratings.doctor_id …) OR EXISTS (… facilities … id = ratings.facility_id …) OR public.is_super_admin()`. |
 | `applications` | UPDATE (SELECT + INSERT already in 001) | `EXISTS (… doctors …) OR EXISTS (… shifts JOIN facilities … f.profile_id = auth.uid()) OR public.is_super_admin()`. |
 | `notifications` | INSERT + UPDATE (SELECT already in 001) | INSERT: `user_id = auth.uid() OR public.is_super_admin()`. UPDATE: `user_id = auth.uid()`. |

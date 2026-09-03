@@ -259,7 +259,9 @@ ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
 
--- replacement_requests: authenticated read; requesting doctor (or super admin) writes.
+-- replacement_requests: authenticated read; requesting doctor, the facility that
+-- owns the shift, or a super admin writes. Hospitals are the real callers of the
+-- UPDATE path (approve / fill / reject), so the facility-owner branch is required.
 DROP POLICY IF EXISTS "Replacement requests viewable by authenticated users" ON public.replacement_requests;
 CREATE POLICY "Replacement requests viewable by authenticated users" ON public.replacement_requests
     FOR SELECT USING (auth.role() = 'authenticated');
@@ -275,10 +277,17 @@ DROP POLICY IF EXISTS "Replacement requests updatable by requesting doctor or ad
 CREATE POLICY "Replacement requests updatable by requesting doctor or admin" ON public.replacement_requests
     FOR UPDATE USING (
         EXISTS (SELECT 1 FROM public.doctors WHERE id = replacement_requests.requesting_doctor_id AND profile_id = auth.uid())
+        OR EXISTS (
+            SELECT 1 FROM public.shifts s
+            JOIN public.facilities f ON s.facility_id = f.id
+            WHERE s.id = replacement_requests.shift_id AND f.profile_id = auth.uid()
+        )
         OR public.is_super_admin()
     );
 
--- payouts: authenticated read; payout's doctor (or super admin) updates.
+-- payouts: authenticated read; payout's doctor, the facility that owns the shift,
+-- or a super admin updates. Hospitals approve payments, so they need the
+-- facility-owner branch.
 DROP POLICY IF EXISTS "Payouts viewable by authenticated users" ON public.payouts;
 CREATE POLICY "Payouts viewable by authenticated users" ON public.payouts
     FOR SELECT USING (auth.role() = 'authenticated');
@@ -287,6 +296,11 @@ DROP POLICY IF EXISTS "Payouts updatable by owner doctor or admin" ON public.pay
 CREATE POLICY "Payouts updatable by owner doctor or admin" ON public.payouts
     FOR UPDATE USING (
         EXISTS (SELECT 1 FROM public.doctors WHERE id = payouts.doctor_id AND profile_id = auth.uid())
+        OR EXISTS (
+            SELECT 1 FROM public.shifts s
+            JOIN public.facilities f ON s.facility_id = f.id
+            WHERE s.id = payouts.shift_id AND f.profile_id = auth.uid()
+        )
         OR public.is_super_admin()
     );
 
