@@ -6,30 +6,28 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { DocumentPreviewCard } from "@/components/forms/document-preview-card";
 import { useFacilities } from "@/hooks/use-facilities";
 import type { Facility } from "@/lib/mock-data/organizations";
-import type { HospitalVerification } from "@/types";
+import type { DocumentReviewStatus } from "@/lib/supabase/storage";
 
-const CHECKS: { key: keyof HospitalVerification; label: string }[] = [
-  { key: "governmentRegistration", label: "Government Registration Certificate" },
-  { key: "medicalLicense", label: "Medical License" },
-  { key: "taxRegistration", label: "Tax Registration" },
-  { key: "accreditation", label: "Hospital Accreditation" },
-  { key: "authorizedSignatory", label: "Authorized Signatory Proof" },
-];
+const KNOWN_LABELS: Record<string, string> = {
+  governmentRegistration: "Government Registration Certificate",
+  medicalLicense: "Medical License",
+  taxRegistration: "Tax Registration",
+  accreditation: "Hospital Accreditation",
+  authorizedSignatory: "Authorized Signatory Proof",
+};
 
 function documentLabel(key: string) {
-  const check = CHECKS.find((c) => c.key === key);
-  if (check) return check.label;
-  return key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim();
+  return (
+    KNOWN_LABELS[key] ??
+    key.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).trim()
+  );
 }
 
 export function VerifyHospitalDialog({
@@ -40,131 +38,110 @@ export function VerifyHospitalDialog({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [viewedDocs, setViewedDocs] = useState<Set<string>>(new Set());
-  const { updateFacilityVerification, approveFacilityRegistration, rejectFacilityRegistration } = useFacilities();
-
-  const verification: HospitalVerification =
-    facility.verification ?? {
-      governmentRegistration: false,
-      medicalLicense: false,
-      taxRegistration: false,
-      accreditation: false,
-      authorizedSignatory: false,
-    };
-  const allChecksPassed = Object.values(verification).every(Boolean);
+  const { reviewFacilityDocument, approveFacilityRegistration, rejectFacilityRegistration } =
+    useFacilities();
 
   const uploadedDocs = Object.entries(facility.uploadedDocuments ?? {});
-  const allDocsViewed = uploadedDocs.length > 0 && uploadedDocs.every(([key]) => viewedDocs.has(key));
-  const alreadyDecided = facility.registrationStatus === "Approved" || facility.registrationStatus === "Rejected";
+  const statusOf = (s?: DocumentReviewStatus): DocumentReviewStatus => s ?? "pending";
+  const approvedCount = uploadedDocs.filter(([, f]) => statusOf(f.status) === "approved").length;
+  const rejectedCount = uploadedDocs.filter(([, f]) => statusOf(f.status) === "rejected").length;
+  const allApproved = uploadedDocs.length > 0 && approvedCount === uploadedDocs.length;
+  const alreadyDecided =
+    facility.registrationStatus === "Approved" || facility.registrationStatus === "Rejected";
 
-  function markViewed(key: string) {
-    setViewedDocs((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  function handleReview(key: string, decision: "approved" | "rejected") {
+    void reviewFacilityDocument(facility.id, key, decision);
   }
 
   function handleApprove() {
-    approveFacilityRegistration(facility.id);
+    void approveFacilityRegistration(facility.id);
     setOpen(false);
   }
 
   function handleReject() {
-    rejectFacilityRegistration(facility.id);
+    void rejectFacilityRegistration(facility.id);
     setOpen(false);
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Verification Checklist</DialogTitle>
+      <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <div className="shrink-0 border-b border-border px-6 py-4 pr-12">
+          <DialogTitle>Document Verification</DialogTitle>
           <DialogDescription>
-            Preview every uploaded document before approving or rejecting this hospital.
+            Approve or reject each uploaded document. The hospital only goes live once every
+            document is approved; a single rejection rejects the registration.
           </DialogDescription>
-        </DialogHeader>
+          <div className="mt-3">
+            <p className="text-sm font-medium text-foreground">{facility.name}</p>
+            <p className="text-xs text-muted-foreground">
+              {facility.hospitalType} · {facility.city} · Reg. No. {facility.registrationNumber}
+            </p>
+            {facility.registrationStatus && (
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Registration status: {facility.registrationStatus}
+              </p>
+            )}
+          </div>
+        </div>
 
-        <div>
-          <p className="text-sm font-medium text-foreground">{facility.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {facility.hospitalType} · {facility.city}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Reg. No. {facility.registrationNumber} · License {facility.governmentLicense}
-          </p>
-          {facility.registrationStatus && (
-            <p className="mt-1 text-xs font-medium text-muted-foreground">
-              Registration status: {facility.registrationStatus}
+        <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
+          {uploadedDocs.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-destructive">
+              No documents were uploaded by this hospital.
+            </p>
+          ) : (
+            uploadedDocs.map(([key, file]) => (
+              <DocumentPreviewCard
+                key={key}
+                label={documentLabel(key)}
+                file={file}
+                status={statusOf(file.status)}
+                reviewedAt={file.reviewedAt}
+                readOnly={alreadyDecided}
+                onApprove={() => handleReview(key, "approved")}
+                onReject={() => handleReview(key, "rejected")}
+              />
+            ))
+          )}
+
+          {rejectedCount > 0 && (
+            <p className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">
+              {rejectedCount} document{rejectedCount > 1 ? "s were" : " was"} rejected — this
+              registration is rejected.
+            </p>
+          )}
+          {allApproved && !alreadyDecided && (
+            <p className="rounded-lg bg-success/10 p-3 text-sm font-medium text-success">
+              All documents approved — you can now approve the registration.
             </p>
           )}
         </div>
 
-        <div className="space-y-2">
-          <p className="text-xs font-medium text-muted-foreground">Uploaded Documents</p>
-          {uploadedDocs.length === 0 ? (
-            <p className="text-sm text-destructive">No documents uploaded</p>
-          ) : (
-            <div className="space-y-2">
-              {uploadedDocs.map(([key, file]) => (
-                <DocumentPreviewCard
-                  key={key}
-                  label={documentLabel(key)}
-                  file={file}
-                  viewed={viewedDocs.has(key)}
-                  onView={() => markViewed(key)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-3 rounded-xl border border-border p-4">
-          {CHECKS.map((check) => {
-            const docViewed = viewedDocs.has(check.key);
-            return (
-              <label
-                key={check.key}
-                className="flex items-center gap-3 text-sm"
-                title={docViewed ? undefined : "Preview this document before marking it verified"}
-              >
-                <Checkbox
-                  checked={verification[check.key]}
-                  disabled={!docViewed}
-                  onCheckedChange={(checked) => {
-                    updateFacilityVerification(facility.id, { [check.key]: checked === true });
-                  }}
-                />
-                {check.label}
-                {!docViewed && <span className="text-xs text-muted-foreground">(preview required)</span>}
-              </label>
-            );
-          })}
-        </div>
-
-        {allChecksPassed && (
-          <p className="text-sm font-medium text-success">
-            All checks complete — this hospital is Verified and live on the platform.
-          </p>
-        )}
-
-        {!allDocsViewed && uploadedDocs.length > 0 && (
+        <div className="flex shrink-0 flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
-            Preview all {uploadedDocs.length} document{uploadedDocs.length > 1 ? "s" : ""} above to unlock approve/reject.
+            {uploadedDocs.length === 0
+              ? "No documents to review."
+              : `${approvedCount} of ${uploadedDocs.length} document${
+                  uploadedDocs.length > 1 ? "s" : ""
+                } approved${rejectedCount > 0 ? ` · ${rejectedCount} rejected` : ""}`}
           </p>
-        )}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            className="text-destructive hover:text-destructive"
-            disabled={!allDocsViewed || alreadyDecided}
-            onClick={handleReject}
-          >
-            <ShieldX className="size-4" /> Reject
-          </Button>
-          <Button type="button" disabled={!allDocsViewed || alreadyDecided} onClick={handleApprove}>
-            <CheckCircle2 className="size-4" /> Approve Registration
-          </Button>
-        </DialogFooter>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              disabled={alreadyDecided}
+              onClick={handleReject}
+            >
+              <ShieldX className="size-4" /> Reject Registration
+            </Button>
+            <Button type="button" disabled={!allApproved || alreadyDecided} onClick={handleApprove}>
+              <CheckCircle2 className="size-4" /> Approve Registration
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

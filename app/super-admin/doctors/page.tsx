@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Users, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
+import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -61,27 +61,27 @@ export default function SuperAdminDoctorsPage() {
       },
       {
         id: "verification",
-        header: "Verification",
+        header: "Documents",
         accessorFn: (row) =>
-          Object.values(
-            row.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false }
-          ).filter(Boolean).length,
+          Object.values(row.uploadedDocuments ?? {}).filter((f) => f.status === "approved").length,
         cell: ({ row }) => {
-          const v =
-            row.original.verification ??
-            { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
-          const passed = Object.values(v).filter(Boolean).length;
+          const docs = Object.values(row.original.uploadedDocuments ?? {});
+          const total = docs.length;
+          const approved = docs.filter((f) => f.status === "approved").length;
+          const anyRejected = docs.some((f) => f.status === "rejected");
           return (
             <VerifyDoctorDialog
               doctor={row.original}
               trigger={
                 <Button variant="outline" size="sm">
-                  {passed === 4 ? (
+                  {anyRejected ? (
+                    <ShieldX className="size-3.5 text-destructive" />
+                  ) : total > 0 && approved === total ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
                     <ShieldAlert className="size-3.5 text-warning-foreground" />
                   )}
-                  {passed}/4 checks
+                  {approved}/{total} docs
                 </Button>
               }
             />

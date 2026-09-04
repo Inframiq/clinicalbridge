@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { reportSupabase } from "./log";
 
+export type DocumentReviewStatus = "pending" | "approved" | "rejected";
+
 export interface UploadedFileMetadata {
   name: string;
   path: string;
@@ -8,6 +10,13 @@ export interface UploadedFileMetadata {
   size: number;
   type: string;
   uploadedAt: string;
+  /**
+   * Per-document verification decision made by a super admin in the
+   * verification dialog. Absent on documents uploaded before this field
+   * existed — treat a missing value as "pending".
+   */
+  status?: DocumentReviewStatus;
+  reviewedAt?: string;
 }
 
 /**

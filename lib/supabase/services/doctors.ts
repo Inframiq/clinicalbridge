@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Doctor, DoctorVerification } from "@/types";
+import type { UploadedFileMetadata } from "@/lib/supabase/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
@@ -177,6 +178,40 @@ export async function updateDoctorProfileInSupabase(
     return { data, error: null };
   } catch (err) {
     reportSupabase(`updateDoctorProfileInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
+  }
+}
+
+/**
+ * Persists the whole `uploaded_documents` JSONB for a doctor after a super
+ * admin approves or rejects an individual document in the verification dialog.
+ */
+export async function updateDoctorDocumentsInSupabase(
+  id: string,
+  uploadedDocuments: Record<string, UploadedFileMetadata>,
+  client?: SupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorDocumentsInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("doctors")
+      .update({ uploaded_documents: uploadedDocuments })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorDocumentsInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateDoctorDocumentsInSupabase(${id})`, err);
     return { data: null, error: describeSupabaseError(err) };
   }
 }

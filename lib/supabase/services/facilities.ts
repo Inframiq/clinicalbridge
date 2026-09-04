@@ -111,6 +111,40 @@ export async function updateFacilityVerificationInSupabase(
 }
 
 /**
+ * Persists the whole `uploaded_documents` JSONB for a facility after a super
+ * admin approves or rejects an individual document in the verification dialog.
+ */
+export async function updateFacilityDocumentsInSupabase(
+  id: string,
+  uploadedDocuments: Record<string, UploadedFileMetadata>,
+  client?: SupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateFacilityDocumentsInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("facilities")
+      .update({ uploaded_documents: uploadedDocuments })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateFacilityDocumentsInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateFacilityDocumentsInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
+  }
+}
+
+/**
  * Updates the hospital account's overall registration status (`profiles.verification_status`).
  * This is what actually moves the hospital off the "waiting for approval" screen after a
  * super admin reviews their documents - the per-document checklist above only tracks which

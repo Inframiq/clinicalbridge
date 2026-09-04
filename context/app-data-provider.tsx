@@ -49,13 +49,16 @@ import {
   updateDoctorVerificationInSupabase,
   updateDoctorProfileInSupabase,
   updateDoctorRegistrationStatusInSupabase,
+  updateDoctorDocumentsInSupabase,
 } from "@/lib/supabase/services/doctors";
 import {
   getFacilities,
   mapFacilityRow,
   updateFacilityVerificationInSupabase,
   updateFacilityRegistrationStatusInSupabase,
+  updateFacilityDocumentsInSupabase,
 } from "@/lib/supabase/services/facilities";
+import type { UploadedFileMetadata, DocumentReviewStatus } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/services/payouts";
@@ -139,6 +142,16 @@ interface AppDataContextValue {
   registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: DoctorKind) => Promise<Doctor>;
   registerHospital: (input: NewHospitalInput) => Promise<Facility>;
   updateDoctorVerification: (id: string, patch: Partial<DoctorVerification>) => Promise<void>;
+  /**
+   * Records a super admin's approve/reject decision on one uploaded document.
+   * A single "rejected" decision also rejects the whole registration; the
+   * doctor is only marked verified once every uploaded document is approved.
+   */
+  reviewDoctorDocument: (
+    id: string,
+    docKey: string,
+    decision: Exclude<DocumentReviewStatus, "pending">
+  ) => Promise<void>;
   updateDoctorProfile: (
     id: string,
     patch: Partial<
@@ -176,6 +189,12 @@ interface AppDataContextValue {
   updateFacilityVerification: (
     id: string,
     patch: Partial<HospitalVerification>
+  ) => Promise<void>;
+  /** Hospital counterpart of {@link reviewDoctorDocument}. */
+  reviewFacilityDocument: (
+    id: string,
+    docKey: string,
+    decision: Exclude<DocumentReviewStatus, "pending">
   ) => Promise<void>;
   approveFacilityRegistration: (id: string) => Promise<void>;
   rejectFacilityRegistration: (id: string) => Promise<void>;
@@ -643,6 +662,57 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setDoctors]
   );
 
+  const reviewDoctorDocument = React.useCallback(
+    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+      let prevDoctors: Doctor[] = [];
+      let profileId: string | undefined;
+      let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
+      setDoctors((prev) => {
+        prevDoctors = prev;
+        return prev.map((d) => {
+          if (d.id !== id) return d;
+          profileId = d.profileId;
+          const docs = d.uploadedDocuments ?? {};
+          const current = docs[docKey];
+          if (!current) return d;
+          const updatedDocs: Record<string, UploadedFileMetadata> = {
+            ...docs,
+            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+          };
+          nextDocuments = updatedDocs;
+          const entries = Object.values(updatedDocs);
+          const allApproved = entries.length > 0 && entries.every((f) => f.status === "approved");
+          return {
+            ...d,
+            uploadedDocuments: updatedDocs,
+            verified: decision === "rejected" ? false : allApproved ? true : d.verified,
+            status: decision === "rejected" ? d.status : allApproved ? "active" : d.status,
+            registrationStatus: decision === "rejected" ? "Rejected" : d.registrationStatus,
+          };
+        });
+      });
+
+      // `nextDocuments` is assigned inside the synchronous updater; re-widen it
+      // so the guard below is a real check rather than TypeScript's narrowing.
+      const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
+      if (!docsToWrite) return;
+
+      const writes: Promise<{ data: unknown; error: string | null }>[] = [
+        updateDoctorDocumentsInSupabase(id, docsToWrite),
+      ];
+      if (decision === "rejected") {
+        writes.push(updateDoctorRegistrationStatusInSupabase(profileId, "Rejected"));
+      }
+      const results = await Promise.all(writes);
+      const error = results.find((r) => r.error)?.error ?? null;
+      if (error) {
+        setDoctors(prevDoctors);
+        toast.error(`Couldn't record document decision: ${error}`);
+      }
+    },
+    [setDoctors]
+  );
+
   const assignDoctorToShift = React.useCallback(
     async (shiftId: string, doctorId: string) => {
       let prevShifts: Shift[] = [];
@@ -951,6 +1021,54 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setFacilities]
   );
 
+  const reviewFacilityDocument = React.useCallback(
+    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+      let prevFacilities: Facility[] = [];
+      let profileId: string | undefined;
+      let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) => {
+          if (f.id !== id) return f;
+          profileId = f.profileId;
+          const docs = f.uploadedDocuments ?? {};
+          const current = docs[docKey];
+          if (!current) return f;
+          const updatedDocs: Record<string, UploadedFileMetadata> = {
+            ...docs,
+            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+          };
+          nextDocuments = updatedDocs;
+          const entries = Object.values(updatedDocs);
+          const allApproved = entries.length > 0 && entries.every((doc) => doc.status === "approved");
+          return {
+            ...f,
+            uploadedDocuments: updatedDocs,
+            status: decision === "rejected" ? "pending" : allApproved ? "verified" : f.status,
+            registrationStatus: decision === "rejected" ? "Rejected" : f.registrationStatus,
+          };
+        });
+      });
+
+      const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
+      if (!docsToWrite) return;
+
+      const writes: Promise<{ data: unknown; error: string | null }>[] = [
+        updateFacilityDocumentsInSupabase(id, docsToWrite),
+      ];
+      if (decision === "rejected") {
+        writes.push(updateFacilityRegistrationStatusInSupabase(profileId, "Rejected"));
+      }
+      const results = await Promise.all(writes);
+      const error = results.find((r) => r.error)?.error ?? null;
+      if (error) {
+        setFacilities(prevFacilities);
+        toast.error(`Couldn't record document decision: ${error}`);
+      }
+    },
+    [setFacilities]
+  );
+
   const approveFacilityRegistration = React.useCallback(
     async (id: string) => {
       const fullyVerified: HospitalVerification = {
@@ -1083,6 +1201,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
+      reviewDoctorDocument,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1094,6 +1213,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      reviewFacilityDocument,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
@@ -1121,6 +1241,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
+      reviewDoctorDocument,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1132,6 +1253,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      reviewFacilityDocument,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
