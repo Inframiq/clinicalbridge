@@ -366,14 +366,23 @@ CREATE POLICY "Shifts manageable by facility" ON public.shifts
 -- and UPDATEs public.shifts; the facility-owner policy above matches 0 rows for
 -- a doctor, so the write returned PGRST116 and the app rolled back.
 -- Postgres ORs permissive policies, so this widens UPDATE without weakening the
--- facility policy. Deliberately NO `WITH CHECK`: declining nulls
--- assigned_doctor_id, and a WITH CHECK mirroring the USING clause would then
--- reject the decline. The facility policy's WITH CHECK still governs
+-- facility policy. When a FOR UPDATE policy has USING but no WITH CHECK, Postgres
+-- re-applies USING to the *post-update* row -- so declining (which nulls
+-- assigned_doctor_id) would fail an implicit new-row check. The explicit
+-- WITH CHECK below therefore also admits the row whose assigned_doctor_id is
+-- NULL (the decline case). The facility policy's WITH CHECK still governs
 -- facility-driven writes.
 DROP POLICY IF EXISTS "Shifts updatable by assigned doctor" ON public.shifts;
 CREATE POLICY "Shifts updatable by assigned doctor" ON public.shifts
     FOR UPDATE USING (
         EXISTS (
+            SELECT 1 FROM public.doctors d
+            WHERE d.id = shifts.assigned_doctor_id AND d.profile_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        assigned_doctor_id IS NULL
+        OR EXISTS (
             SELECT 1 FROM public.doctors d
             WHERE d.id = shifts.assigned_doctor_id AND d.profile_id = auth.uid()
         )
@@ -404,7 +413,7 @@ BEGIN
         -- (initial onboarding submission, or re-submission after 'Needs Changes').
         -- 'Under Review' / 'Needs Changes' / 'Approved' / 'Rejected' are admin-only.
         IF NEW.verification_status IS DISTINCT FROM OLD.verification_status
-           AND NEW.verification_status <> 'Submitted' THEN
+           AND NEW.verification_status IS DISTINCT FROM 'Submitted' THEN
             RAISE EXCEPTION 'Not authorized to set verification_status to %', NEW.verification_status;
         END IF;
     END IF;
