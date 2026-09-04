@@ -267,7 +267,7 @@ export function LoginForm() {
           <FieldDescription className="text-center">
             Don&apos;t have an account?{" "}
             <Link
-              href={roleOnboardingPaths[role] || "/onboarding"}
+              href={`/signup?role=${role}`}
               className="font-medium text-brand hover:underline"
             >
               Sign up as {ROLE_CONFIG[role].label}
