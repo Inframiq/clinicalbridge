@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
   Radio,
@@ -77,3 +78,16 @@ export const superAdminNavItems: NavItem[] = [
   { label: "Analytics", href: "/super-admin/analytics", icon: BarChart3 },
   { label: "Settings", href: "/super-admin/settings", icon: Settings },
 ];
+
+/**
+ * Nav items keyed by role. `NavItem.icon` is a lucide component reference, which
+ * cannot cross the RSC → Client boundary — so the role layouts (async Server
+ * Components) must NOT pass a nav array as a prop. They pass `requiredRole`
+ * (a plain string) and the client `AppShell` looks the items up here.
+ */
+export const navItemsByRole: Record<UserRole, NavItem[]> = {
+  hospital: hospitalNavItems,
+  working_doctor: workingDoctorNavItems,
+  locum_tenens: locumTenensNavItems,
+  super_admin: superAdminNavItems,
+};

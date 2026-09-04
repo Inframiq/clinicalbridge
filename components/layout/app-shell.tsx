@@ -8,12 +8,11 @@ import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { useAuthRole } from "@/context/auth-provider";
 import type { UserProfile } from "@/context/auth-provider";
-import type { NavItem } from "@/lib/nav-config";
+import { navItemsByRole } from "@/lib/nav-config";
 import { ROLE_HOME } from "@/lib/roles";
 import type { UserRole } from "@/types";
 
 interface AppShellProps {
-  navItems: NavItem[];
   rootLabel: string;
   requiredRole: UserRole;
   /**
@@ -33,7 +32,6 @@ interface AppShellProps {
 const DEV_BYPASS = process.env.NODE_ENV !== "production";
 
 export function AppShell({
-  navItems,
   rootLabel,
   requiredRole,
   initialProfile,
@@ -42,6 +40,11 @@ export function AppShell({
   const router = useRouter();
   const { role, login } = useAuthRole();
   const [collapsed, setCollapsed] = useLocalStorageState("lt-sidebar-collapsed", false);
+
+  // `NavItem.icon` is a lucide component reference and can't cross the
+  // RSC → Client boundary, so the async server layouts pass `requiredRole`
+  // (a string) instead of a nav array and we resolve it here on the client.
+  const navItems = navItemsByRole[requiredRole];
 
   // `role` is backed by localStorage via useSyncExternalStore, which renders
   // the SSR-safe null snapshot on the very first client pass before

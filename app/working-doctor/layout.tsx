@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import { workingDoctorNavItems } from "@/lib/nav-config";
 import { PLATFORM } from "@/lib/config/brand";
 import { ROLE_HOME } from "@/lib/roles";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -37,7 +36,6 @@ export default async function WorkingDoctorLayout({
 
   return (
     <AppShell
-      navItems={workingDoctorNavItems}
       rootLabel={PLATFORM.name}
       requiredRole={REQUIRED_ROLE}
       initialProfile={initialProfile}
