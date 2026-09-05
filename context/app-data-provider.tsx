@@ -695,7 +695,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       // `nextDocuments` is assigned inside the synchronous updater; re-widen it
       // so the guard below is a real check rather than TypeScript's narrowing.
       const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
-      if (!docsToWrite) return;
+      if (!docsToWrite) {
+        toast.error("Couldn't find that document to review.");
+        return;
+      }
+      toast.success(decision === "approved" ? "Document approved." : "Document rejected.");
 
       const writes: Promise<{ data: unknown; error: string | null }>[] = [
         updateDoctorDocumentsInSupabase(id, docsToWrite),
@@ -707,7 +711,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const error = results.find((r) => r.error)?.error ?? null;
       if (error) {
         setDoctors(prevDoctors);
-        toast.error(`Couldn't record document decision: ${error}`);
+        toast.error(`Couldn't save the decision: ${error}`);
       }
     },
     [setDoctors]
@@ -1051,7 +1055,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
 
       const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
-      if (!docsToWrite) return;
+      if (!docsToWrite) {
+        toast.error("Couldn't find that document to review.");
+        return;
+      }
+      toast.success(decision === "approved" ? "Document approved." : "Document rejected.");
 
       const writes: Promise<{ data: unknown; error: string | null }>[] = [
         updateFacilityDocumentsInSupabase(id, docsToWrite),
@@ -1063,7 +1071,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const error = results.find((r) => r.error)?.error ?? null;
       if (error) {
         setFacilities(prevFacilities);
-        toast.error(`Couldn't record document decision: ${error}`);
+        toast.error(`Couldn't save the decision: ${error}`);
       }
     },
     [setFacilities]

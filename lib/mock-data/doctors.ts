@@ -162,7 +162,36 @@ export const doctors: Doctor[] = [
     status: "onboarding",
     doctorKind: "working",
     department: "Emergency Department",
-    verification: { medicalCouncil: true, degree: true, identity: false, hospitalApproval: false },
+    registrationStatus: "Submitted",
+    verification: { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false },
+    uploadedDocuments: {
+      medicalCouncil: {
+        name: "medical-council-registration.jpg",
+        path: "demo/rachel-adams/medical-council-registration.jpg",
+        publicUrl:
+          "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=max&w=1400",
+        size: 214_000,
+        type: "image/jpeg",
+        uploadedAt: "2026-08-30T10:12:00.000Z",
+      },
+      degree: {
+        name: "mbbs-degree-certificate.pdf",
+        path: "demo/rachel-adams/mbbs-degree-certificate.pdf",
+        publicUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        size: 13_264,
+        type: "application/pdf",
+        uploadedAt: "2026-08-30T10:13:00.000Z",
+      },
+      identity: {
+        name: "govt-id.png",
+        path: "demo/rachel-adams/govt-id.png",
+        publicUrl:
+          "https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=max&w=1400",
+        size: 305_000,
+        type: "image/png",
+        uploadedAt: "2026-08-30T10:14:00.000Z",
+      },
+    },
   },
   {
     id: "doc-priya-shah-leave",

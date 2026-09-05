@@ -52,9 +52,16 @@ export function DocumentPreviewCard({
   onReject: () => void;
 }) {
   const [open, setOpen] = useState(true);
-  const isImage = file.type?.startsWith("image/");
-  const isPdf = file.type === "application/pdf";
   const meta = STATUS_META[status];
+
+  // Fall back to sniffing the extension when the stored MIME type is missing
+  // (older uploads, or a compress step that dropped it).
+  const ext = (file.name || file.path || "").split(".").pop()?.toLowerCase() ?? "";
+  const isImage =
+    file.type?.startsWith("image/") || ["jpg", "jpeg", "png", "gif", "webp"].includes(ext);
+  const isPdf = file.type === "application/pdf" || ext === "pdf";
+  const isLocalOnly = file.publicUrl?.startsWith("blob:") ?? false;
+  const hasUrl = !!file.publicUrl && !isLocalOnly;
 
   return (
     <div className="rounded-lg border border-border">
@@ -92,23 +99,56 @@ export function DocumentPreviewCard({
       </div>
 
       {open && (
-        <div className="border-t border-border bg-muted/30 p-3">
-          {isImage ? (
+        <div className="space-y-2 border-t border-border bg-muted/30 p-3">
+          {hasUrl && (
+            <a
+              href={file.publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+            >
+              Open in a new tab <ExternalLink className="size-3.5" />
+            </a>
+          )}
+
+          {isLocalOnly ? (
+            <div className="rounded-md bg-warning/10 px-3 py-4 text-center text-sm text-warning-foreground">
+              This document was only stored in the applicant&apos;s browser during
+              sign-up (the storage upload failed) and can&apos;t be opened here.
+              Ask them to re-upload it.
+            </div>
+          ) : !hasUrl ? (
+            <div className="rounded-md bg-destructive/10 px-3 py-4 text-center text-sm text-destructive">
+              No file URL was saved for this document.
+            </div>
+          ) : isImage ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={file.publicUrl}
               alt={label}
-              className="mx-auto max-h-[65dvh] w-full rounded-md object-contain"
+              className="mx-auto max-h-[65dvh] w-full rounded-md bg-white object-contain"
             />
           ) : isPdf ? (
-            <iframe
-              src={file.publicUrl}
-              title={label}
-              className="h-[65dvh] w-full rounded-md border-0 bg-white"
-            />
+            <object
+              data={file.publicUrl}
+              type="application/pdf"
+              className="h-[65dvh] w-full rounded-md border border-border bg-white"
+            >
+              <div className="flex flex-col items-center gap-2 py-6 text-center text-sm text-muted-foreground">
+                <p>Your browser can&apos;t display this PDF inline.</p>
+                <a
+                  href={file.publicUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 font-medium text-brand hover:underline"
+                >
+                  Open the PDF <ExternalLink className="size-3.5" />
+                </a>
+              </div>
+            </object>
           ) : (
             <div className="flex flex-col items-center gap-2 py-6 text-center text-sm text-muted-foreground">
-              <p>Preview isn&apos;t available for this file type.</p>
+              <p>Inline preview isn&apos;t available for this file type.</p>
               <a
                 href={file.publicUrl}
                 target="_blank"

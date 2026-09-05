@@ -380,7 +380,7 @@ export function HospitalOnboardingWizard() {
                             <input
                               type="file"
                               className="hidden"
-                              accept=".pdf,.jpg,.jpeg,.png"
+                              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) handleFileUpload(doc.key, file);

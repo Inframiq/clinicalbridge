@@ -458,3 +458,38 @@ DROP TRIGGER IF EXISTS guard_privileged_facility_update ON public.facilities;
 CREATE TRIGGER guard_privileged_facility_update
     BEFORE UPDATE ON public.facilities
     FOR EACH ROW EXECUTE FUNCTION public.guard_privileged_facility_update();
+
+-- -----------------------------------------------------------------------------
+-- Migration 002 (storage): the "documents" bucket + its RLS. This was in
+-- migration 002 but the live project has no such bucket
+-- (GET /storage/v1/bucket/documents -> 404), so every onboarding document
+-- upload fails and the app stores a throwaway blob: URL that the super-admin
+-- can never open. Public bucket => anyone with the object URL can view it,
+-- which is what the verification dialog's <img>/<object> previews rely on.
+-- Idempotent: ON CONFLICT upsert + DROP POLICY IF EXISTS.
+-- -----------------------------------------------------------------------------
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('documents', 'documents', true)
+ON CONFLICT (id) DO UPDATE SET public = true;
+
+DROP POLICY IF EXISTS "Users can upload their own documents" ON storage.objects;
+CREATE POLICY "Users can upload their own documents" ON storage.objects
+    FOR INSERT WITH CHECK (bucket_id = 'documents' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can view documents" ON storage.objects;
+CREATE POLICY "Users can view documents" ON storage.objects
+    FOR SELECT USING (bucket_id = 'documents' AND auth.role() = 'authenticated');
+
+DROP POLICY IF EXISTS "Users can update their own documents" ON storage.objects;
+CREATE POLICY "Users can update their own documents" ON storage.objects
+    FOR UPDATE USING (
+        bucket_id = 'documents'
+        AND (auth.uid()::text = (storage.foldername(name))[1] OR public.is_super_admin())
+    );
+
+DROP POLICY IF EXISTS "Users can delete their own documents" ON storage.objects;
+CREATE POLICY "Users can delete their own documents" ON storage.objects
+    FOR DELETE USING (
+        bucket_id = 'documents'
+        AND (auth.uid()::text = (storage.foldername(name))[1] OR public.is_super_admin())
+    );
