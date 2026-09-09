@@ -57,6 +57,18 @@ export const ROLE_ORDER: UserRole[] = [
   "super_admin",
 ];
 
+/**
+ * Roles a visitor may pick on the public login / signup screens.
+ * `super_admin` is deliberately excluded: platform admins are provisioned
+ * out-of-band and sign in with just an email + password (the login form
+ * detects the role from their profile and routes them to the admin console).
+ */
+export const SELECTABLE_ROLES: UserRole[] = [
+  "hospital",
+  "working_doctor",
+  "locum_tenens",
+];
+
 export const ROLE_HOME: Record<UserRole, string> = Object.fromEntries(
   ROLE_ORDER.map((role) => [role, ROLE_CONFIG[role].homeHref])
 ) as Record<UserRole, string>;

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function SignupPage() {
   return (
-    <AuthLayout>
+    <AuthLayout variant="signup">
       <Suspense fallback={<div>Loading...</div>}>
         <SignupForm />
       </Suspense>

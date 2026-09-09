@@ -270,7 +270,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          if (expectedRole && profile && profile.role !== expectedRole) {
+          // Platform admins sign in from the same form as everyone else, with no
+          // role selector of their own. Their profile role is authoritative, so
+          // skip the mismatch guard for them and let the real role flow through
+          // to the session (the login form then routes them to the admin console).
+          if (
+            expectedRole &&
+            profile &&
+            profile.role !== expectedRole &&
+            profile.role !== "super_admin"
+          ) {
             const roleLabels: Record<UserRole, string> = {
               hospital: "Hospital / Clinic",
               working_doctor: "Working Doctor",
@@ -319,6 +328,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role,
               full_name: fullName,
             },
+            // Bring the confirmation link back into the app instead of Supabase's
+            // configured Site URL, so the user lands on the sign-in screen ready
+            // to complete onboarding.
+            emailRedirectTo:
+              typeof window !== "undefined"
+                ? `${window.location.origin}/login`
+                : undefined,
           },
         });
 

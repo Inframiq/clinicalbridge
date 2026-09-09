@@ -167,3 +167,45 @@
     @apply font-sans;
   }
 }
+
+/* Auth brand-panel credential ledger: one restrained downward scan on load. */
+@layer utilities {
+  @keyframes auth-ledger-scan {
+    from {
+      top: -2.75rem;
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    88% {
+      opacity: 1;
+    }
+    to {
+      top: 100%;
+      opacity: 0;
+    }
+  }
+
+  .auth-ledger::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: -2.75rem;
+    height: 2.75rem;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      color-mix(in oklch, var(--success) 22%, transparent),
+      transparent
+    );
+    animation: auth-ledger-scan 2.4s ease-in-out 0.35s 1 both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .auth-ledger::after {
+      display: none;
+    }
+  }
+}

@@ -5,7 +5,7 @@ import { OnboardingWizard } from "@/components/forms/onboarding-wizard";
 import { PLATFORM } from "@/lib/config/brand";
 
 export const metadata: Metadata = {
-  title: `Locum Doctor Onboarding — ${PLATFORM.name}`,
+  title: `Locum Tenens Onboarding — ${PLATFORM.name}`,
 };
 
 export default function LocumOnboardingPage() {
@@ -24,7 +24,7 @@ export default function LocumOnboardingPage() {
       <main className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Locum Doctor Onboarding
+            Locum Tenens Onboarding
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Complete your profile and get verified to start browsing and applying for shifts.

@@ -21,7 +21,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, ROLE_HOME, ROLE_ORDER } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_HOME, SELECTABLE_ROLES } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -88,7 +88,19 @@ export function LoginForm() {
     defaultValues: { email: "", password: "" },
   });
 
-  function routeBasedOnStatus(userRole: UserRole, completedOnboarding: boolean, verificationStatus: string) {
+  function routeBasedOnStatus(
+    userRole: UserRole,
+    completedOnboarding: boolean,
+    verificationStatus: string
+  ) {
+    // Platform admins have no onboarding / verification lifecycle — send them
+    // straight to the console regardless of which role tab happened to be active.
+    if (userRole === "super_admin") {
+      toast.success("Welcome back, admin");
+      router.push("/super-admin/dashboard");
+      return;
+    }
+
     if (!completedOnboarding || verificationStatus === "Needs Changes") {
       toast.info("Please complete your onboarding profile.");
       router.push(roleOnboardingPaths[userRole] || "/onboarding");
@@ -120,7 +132,7 @@ export function LoginForm() {
   async function onSubmit(data: FormValues) {
     if (data.email && data.password) {
       const { error, profile } = await signInWithSupabase(data.email, data.password, role);
-      
+
       if (error) {
         toast.error(error.message || "Failed to sign in with Supabase Auth");
         return;
@@ -150,16 +162,22 @@ export function LoginForm() {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold tracking-tight text-foreground">Welcome Back!</h2>
-        <p className="mt-1 text-sm text-muted-foreground">Sign in to your account to continue</p>
+    <div>
+      <div className="mb-8 space-y-2">
+        <h2 className="text-[1.75rem] font-semibold tracking-tight text-foreground">
+          Welcome back
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Sign in to your account to continue.
+        </p>
       </div>
 
       <div className="mb-6">
-        <p className="mb-2.5 text-xs font-medium text-muted-foreground">I am signing in as</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {ROLE_ORDER.map((value) => {
+        <p className="mb-2.5 font-mono text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
+          Sign in as
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          {SELECTABLE_ROLES.map((value) => {
             const config = ROLE_CONFIG[value];
             const Icon = config.icon;
             const isActive = role === value;
@@ -170,16 +188,26 @@ export function LoginForm() {
                 onClick={() => setRole(value)}
                 aria-pressed={isActive}
                 className={cn(
-                  "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                  "group flex min-w-0 flex-col gap-2.5 rounded-xl border px-3 py-3 text-left transition-all outline-none",
+                  "focus-visible:ring-2 focus-visible:ring-brand/40",
                   isActive
-                    ? "border-brand bg-brand-muted text-brand"
-                    : "border-border text-muted-foreground hover:border-brand/40 hover:text-foreground"
+                    ? "border-brand/70 bg-brand-muted"
+                    : "border-border hover:border-brand/40 hover:bg-muted/40"
                 )}
               >
-                <Icon className="size-4" />
                 <span
                   className={cn(
-                    "text-xs leading-tight font-medium",
+                    "flex size-7 items-center justify-center rounded-lg transition-colors",
+                    isActive
+                      ? "bg-brand text-white"
+                      : "bg-muted text-muted-foreground group-hover:text-foreground"
+                  )}
+                >
+                  <Icon className="size-3.5" />
+                </span>
+                <span
+                  className={cn(
+                    "text-[11px] leading-tight font-medium",
                     isActive ? "text-brand" : "text-foreground"
                   )}
                 >
@@ -194,16 +222,16 @@ export function LoginForm() {
       <form onSubmit={handleSubmit(onSubmit)} noValidate>
         <FieldGroup>
           <Field data-invalid={!!errors.email}>
-            <FieldLabel htmlFor="email">Email Address</FieldLabel>
+            <FieldLabel htmlFor="email">Email address</FieldLabel>
             <FieldContent>
               <div className="relative">
-                <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Mail className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
-                  placeholder="youremail@hospital.com"
+                  placeholder="you@hospital.com"
                   autoComplete="email"
-                  className="pl-9"
+                  className="h-11 pl-10"
                   aria-invalid={!!errors.email}
                   {...register("email")}
                 />
@@ -216,20 +244,20 @@ export function LoginForm() {
             <FieldLabel htmlFor="password">Password</FieldLabel>
             <FieldContent>
               <div className="relative">
-                <Lock className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Lock className="absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="current-password"
-                  className="px-9"
+                  className="h-11 px-10"
                   aria-invalid={!!errors.password}
                   {...register("password")}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  className="absolute top-1/2 right-3.5 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
@@ -242,24 +270,39 @@ export function LoginForm() {
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox />
-              Remember Me
+              Remember me
             </label>
             <Link href="/forgot-password" className="text-sm font-medium text-brand hover:underline">
-              Forgot Password?
+              Forgot password?
             </Link>
           </div>
 
-          <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-            Sign In
+          <Button
+            type="submit"
+            size="lg"
+            className="h-11 w-full text-[15px]"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Signing in…" : "Sign in"}
           </Button>
 
           <FieldSeparator>or continue with</FieldSeparator>
 
           <div className="grid grid-cols-2 gap-3">
-            <Button type="button" variant="outline" onClick={() => handleOAuth("google")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              onClick={() => handleOAuth("google")}
+            >
               <GoogleIcon /> Google
             </Button>
-            <Button type="button" variant="outline" onClick={() => handleOAuth("azure")}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              onClick={() => handleOAuth("azure")}
+            >
               <MicrosoftIcon /> Microsoft
             </Button>
           </div>
