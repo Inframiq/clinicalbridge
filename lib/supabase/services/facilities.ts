@@ -152,7 +152,7 @@ export async function updateFacilityDocumentsInSupabase(
  */
 export async function updateFacilityRegistrationStatusInSupabase(
   profileId: string | undefined,
-  status: "Approved" | "Rejected",
+  status: "Approved" | "Rejected" | "Needs Changes",
   client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };

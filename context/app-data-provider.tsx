@@ -14,6 +14,8 @@ import type {
   SavedShift,
   Rating,
   HospitalVerification,
+  Department,
+  AttendanceRecord,
 } from "@/types";
 import {
   shifts as seedShifts,
@@ -25,6 +27,7 @@ import {
   ratings as seedRatings,
 } from "@/lib/mock-data";
 import { facilities as seedFacilities, type Facility } from "@/lib/mock-data/organizations";
+import { DEPARTMENTS as seedDepartmentNames } from "@/lib/mock-data/departments";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useAuthRole } from "@/context/auth-provider";
 import {
@@ -65,6 +68,18 @@ import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/service
 import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
 import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
+import {
+  getDepartments,
+  createDepartmentInSupabase,
+  renameDepartmentInSupabase,
+  deleteDepartmentInSupabase,
+} from "@/lib/supabase/services/departments";
+import {
+  getAttendanceRecords,
+  checkInInSupabase,
+  checkOutInSupabase,
+  verifyAttendanceInSupabase,
+} from "@/lib/supabase/services/attendance";
 import { reportSupabase } from "@/lib/supabase/log";
 import { OfflineModeBanner } from "@/components/layout/offline-mode-banner";
 
@@ -72,6 +87,9 @@ export type NewShiftInput = Pick<
   Shift,
   | "title"
   | "department"
+  | "facilityId"
+  | "facilityName"
+  | "location"
   | "date"
   | "startTime"
   | "endTime"
@@ -83,6 +101,8 @@ export type NewShiftInput = Pick<
   | "description"
   | "codeRed"
 >;
+
+export type NewDepartmentInput = Pick<Department, "facilityId" | "name">;
 
 export type NewDoctorInput = Pick<
   Doctor,
@@ -152,6 +172,8 @@ interface AppDataContextValue {
     docKey: string,
     decision: Exclude<DocumentReviewStatus, "pending">
   ) => Promise<void>;
+  /** Records that a super admin opened this document in the full-screen viewer. No-op if already viewed. */
+  markDoctorDocumentViewed: (id: string, docKey: string) => Promise<void>;
   updateDoctorProfile: (
     id: string,
     patch: Partial<
@@ -172,7 +194,12 @@ interface AppDataContextValue {
   ) => Promise<void>;
   assignDoctorToShift: (shiftId: string, doctorId: string) => Promise<void>;
   respondToShiftAssignment: (shiftId: string, accept: boolean) => Promise<void>;
-  /** Local-only: there is no attendance table in the schema yet, so this never awaits a write. */
+  /**
+   * Local-only "mark available" flag on the shift itself — a scheduling
+   * signal, distinct from the real check-in/check-out flow in
+   * {@link checkInAttendance}/{@link checkOutAttendance}, which persists to
+   * the `attendance_records` table.
+   */
   confirmShiftAttendance: (shiftId: string) => void;
   createReplacementRequest: (input: NewReplacementRequestInput) => Promise<ReplacementRequest>;
   updateReplacementRequestStatus: (
@@ -196,15 +223,32 @@ interface AppDataContextValue {
     docKey: string,
     decision: Exclude<DocumentReviewStatus, "pending">
   ) => Promise<void>;
+  /** Facility counterpart of {@link markDoctorDocumentViewed}. */
+  markFacilityDocumentViewed: (id: string, docKey: string) => Promise<void>;
   approveFacilityRegistration: (id: string) => Promise<void>;
   rejectFacilityRegistration: (id: string) => Promise<void>;
   approveDoctorRegistration: (id: string) => Promise<void>;
   rejectDoctorRegistration: (id: string) => Promise<void>;
+  departments: Department[];
+  createDepartment: (input: NewDepartmentInput) => Promise<Department>;
+  renameDepartment: (id: string, name: string) => Promise<void>;
+  deleteDepartment: (id: string) => Promise<void>;
+  attendanceRecords: AttendanceRecord[];
+  checkInAttendance: (shiftId: string, doctorId: string) => Promise<void>;
+  checkOutAttendance: (id: string) => Promise<void>;
+  verifyAttendance: (id: string, verifierProfileId: string) => Promise<void>;
 }
 
 const AppDataContext = React.createContext<AppDataContextValue | null>(null);
 
-const CITY_MEDICAL = {
+/**
+ * Fallback facility identity for offline/demo mode, where there's no real
+ * signed-in hospital account to read a facility from. Exported so callers
+ * (e.g. BroadcastShiftForm) can fall back to it when `useFacilities()` has no
+ * row for the current profile yet — online, every real broadcast must carry
+ * the caller's own facility identity instead of this constant.
+ */
+export const CITY_MEDICAL = {
   facilityName: "City Medical Center",
   facilityId: "fac-city-medical",
   location: {
@@ -235,6 +279,8 @@ const seed = isSupabaseConfigured
       savedShifts: [] as SavedShift[],
       ratings: [] as Rating[],
       facilities: [] as Facility[],
+      departments: [] as Department[],
+      attendanceRecords: [] as AttendanceRecord[],
     }
   : {
       shifts: seedShifts,
@@ -246,6 +292,12 @@ const seed = isSupabaseConfigured
       savedShifts: [] as SavedShift[],
       ratings: seedRatings,
       facilities: seedFacilities,
+      departments: seedDepartmentNames.map((name) => ({
+        id: `dept-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+        facilityId: CITY_MEDICAL.facilityId,
+        name,
+      })) as Department[],
+      attendanceRecords: [] as AttendanceRecord[],
     };
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
@@ -277,6 +329,14 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     "lt-facilities",
     seed.facilities
   );
+  const [departments, setDepartments] = useLocalStorageState<Department[]>(
+    "lt-departments",
+    seed.departments
+  );
+  const [attendanceRecords, setAttendanceRecords] = useLocalStorageState<AttendanceRecord[]>(
+    "lt-attendance-records",
+    seed.attendanceRecords
+  );
 
   React.useEffect(() => {
     // Gated on a signed-in user, not just on credentials: every table below is
@@ -287,7 +347,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured || !user?.id) return;
     let cancelled = false;
     (async () => {
-      const [shiftsR, replR, appsR, docsR, facsR, payR, ratR] = await Promise.all([
+      const [shiftsR, replR, appsR, docsR, facsR, payR, ratR, deptR, attR] = await Promise.all([
         getShifts(),
         getReplacementRequests(),
         getApplications(),
@@ -295,6 +355,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         getFacilities(),
         getPayouts(),
         getRatings(),
+        getDepartments(),
+        getAttendanceRecords(),
       ]);
       if (cancelled) return;
       // Each slice is set UNCONDITIONALLY when there is no error — including an
@@ -309,11 +371,24 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (!facsR.error) setFacilities(facsR.data);
       if (!payR.error) setPayments(payR.data);
       if (!ratR.error) setRatings(ratR.data);
+      if (!deptR.error) setDepartments(deptR.data);
+      if (!attR.error) setAttendanceRecords(attR.data);
     })();
     return () => {
       cancelled = true;
     };
-  }, [user?.id, setShifts, setReplacementRequests, setApplications, setDoctors, setFacilities, setPayments, setRatings]);
+  }, [
+    user?.id,
+    setShifts,
+    setReplacementRequests,
+    setApplications,
+    setDoctors,
+    setFacilities,
+    setPayments,
+    setRatings,
+    setDepartments,
+    setAttendanceRecords,
+  ]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -374,7 +449,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       const newShift: Shift = {
         id: crypto.randomUUID(),
         status: "open",
-        ...CITY_MEDICAL,
         ...input,
         matchStats: {
           targetDoctors: 48,
@@ -593,7 +667,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
-      setDoctors((prev) => [newDoctor, ...prev]);
+      // A resubmission after "Needs Changes" reuses the existing doctor id, so
+      // replace that entry in place rather than prepending a second copy.
+      setDoctors((prev) => [newDoctor, ...prev.filter((d) => d.id !== newDoctor.id)]);
       return newDoctor;
     },
     [setDoctors]
@@ -613,7 +689,8 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
-      setFacilities((prev) => [newFacility, ...prev]);
+      // Same reasoning as registerSelfDoctor: don't duplicate a resubmission.
+      setFacilities((prev) => [newFacility, ...prev.filter((f) => f.id !== newFacility.id)]);
       return newFacility;
     },
     [setFacilities]
@@ -687,7 +764,11 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             uploadedDocuments: updatedDocs,
             verified: decision === "rejected" ? false : allApproved ? true : d.verified,
             status: decision === "rejected" ? d.status : allApproved ? "active" : d.status,
-            registrationStatus: decision === "rejected" ? "Rejected" : d.registrationStatus,
+            // Rejecting one document should send the applicant back to fix just
+            // that document ("Needs Changes" -> Resume Onboarding), not
+            // permanently reject the whole application. "Rejected" is reserved
+            // for the explicit reject-the-whole-registration action below.
+            registrationStatus: decision === "rejected" ? "Needs Changes" : d.registrationStatus,
           };
         });
       });
@@ -699,19 +780,55 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         toast.error("Couldn't find that document to review.");
         return;
       }
-      toast.success(decision === "approved" ? "Document approved." : "Document rejected.");
+      toast.success(
+        decision === "approved"
+          ? "Document approved."
+          : "Document rejected. The applicant can now resume onboarding to fix it."
+      );
 
       const writes: Promise<{ data: unknown; error: string | null }>[] = [
         updateDoctorDocumentsInSupabase(id, docsToWrite),
       ];
       if (decision === "rejected") {
-        writes.push(updateDoctorRegistrationStatusInSupabase(profileId, "Rejected"));
+        writes.push(updateDoctorRegistrationStatusInSupabase(profileId, "Needs Changes"));
       }
       const results = await Promise.all(writes);
       const error = results.find((r) => r.error)?.error ?? null;
       if (error) {
         setDoctors(prevDoctors);
         toast.error(`Couldn't save the decision: ${error}`);
+      }
+    },
+    [setDoctors]
+  );
+
+  const markDoctorDocumentViewed = React.useCallback(
+    async (id: string, docKey: string) => {
+      let prevDoctors: Doctor[] = [];
+      let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
+      setDoctors((prev) => {
+        prevDoctors = prev;
+        return prev.map((d) => {
+          if (d.id !== id) return d;
+          const docs = d.uploadedDocuments ?? {};
+          const current = docs[docKey];
+          if (!current || current.viewedAt) return d;
+          const updatedDocs: Record<string, UploadedFileMetadata> = {
+            ...docs,
+            [docKey]: { ...current, viewedAt: new Date().toISOString() },
+          };
+          nextDocuments = updatedDocs;
+          return { ...d, uploadedDocuments: updatedDocs };
+        });
+      });
+
+      const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
+      if (!docsToWrite) return; // already viewed, or the document no longer exists
+
+      const { error } = await updateDoctorDocumentsInSupabase(id, docsToWrite);
+      if (error) {
+        setDoctors(prevDoctors);
+        reportSupabase(`markDoctorDocumentViewed(${id})`, error);
       }
     },
     [setDoctors]
@@ -1049,7 +1166,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
             ...f,
             uploadedDocuments: updatedDocs,
             status: decision === "rejected" ? "pending" : allApproved ? "verified" : f.status,
-            registrationStatus: decision === "rejected" ? "Rejected" : f.registrationStatus,
+            // Same reasoning as reviewDoctorDocument: a per-document rejection
+            // routes the applicant back to fix it, it doesn't terminate the
+            // whole registration.
+            registrationStatus: decision === "rejected" ? "Needs Changes" : f.registrationStatus,
           };
         });
       });
@@ -1059,19 +1179,55 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         toast.error("Couldn't find that document to review.");
         return;
       }
-      toast.success(decision === "approved" ? "Document approved." : "Document rejected.");
+      toast.success(
+        decision === "approved"
+          ? "Document approved."
+          : "Document rejected. The applicant can now resume onboarding to fix it."
+      );
 
       const writes: Promise<{ data: unknown; error: string | null }>[] = [
         updateFacilityDocumentsInSupabase(id, docsToWrite),
       ];
       if (decision === "rejected") {
-        writes.push(updateFacilityRegistrationStatusInSupabase(profileId, "Rejected"));
+        writes.push(updateFacilityRegistrationStatusInSupabase(profileId, "Needs Changes"));
       }
       const results = await Promise.all(writes);
       const error = results.find((r) => r.error)?.error ?? null;
       if (error) {
         setFacilities(prevFacilities);
         toast.error(`Couldn't save the decision: ${error}`);
+      }
+    },
+    [setFacilities]
+  );
+
+  const markFacilityDocumentViewed = React.useCallback(
+    async (id: string, docKey: string) => {
+      let prevFacilities: Facility[] = [];
+      let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) => {
+          if (f.id !== id) return f;
+          const docs = f.uploadedDocuments ?? {};
+          const current = docs[docKey];
+          if (!current || current.viewedAt) return f;
+          const updatedDocs: Record<string, UploadedFileMetadata> = {
+            ...docs,
+            [docKey]: { ...current, viewedAt: new Date().toISOString() },
+          };
+          nextDocuments = updatedDocs;
+          return { ...f, uploadedDocuments: updatedDocs };
+        });
+      });
+
+      const docsToWrite: Record<string, UploadedFileMetadata> | null = nextDocuments;
+      if (!docsToWrite) return; // already viewed, or the document no longer exists
+
+      const { error } = await updateFacilityDocumentsInSupabase(id, docsToWrite);
+      if (error) {
+        setFacilities(prevFacilities);
+        reportSupabase(`markFacilityDocumentViewed(${id})`, error);
       }
     },
     [setFacilities]
@@ -1186,6 +1342,118 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setDoctors]
   );
 
+  const createDepartment = React.useCallback(
+    async (input: NewDepartmentInput): Promise<Department> => {
+      const newDepartment: Department = { id: crypto.randomUUID(), ...input };
+      let prevDepartments: Department[] = [];
+      setDepartments((prev) => {
+        prevDepartments = prev;
+        return [...prev, newDepartment];
+      });
+      const { error } = await createDepartmentInSupabase(newDepartment);
+      if (error) {
+        setDepartments(prevDepartments);
+        toast.error(`Couldn't create department: ${error}`);
+        throw new Error(error);
+      }
+      return newDepartment;
+    },
+    [setDepartments]
+  );
+
+  const renameDepartment = React.useCallback(
+    async (id: string, name: string) => {
+      let prevDepartments: Department[] = [];
+      setDepartments((prev) => {
+        prevDepartments = prev;
+        return prev.map((d) => (d.id === id ? { ...d, name } : d));
+      });
+      const { error } = await renameDepartmentInSupabase(id, name);
+      if (error) {
+        setDepartments(prevDepartments);
+        toast.error(`Couldn't rename department: ${error}`);
+      }
+    },
+    [setDepartments]
+  );
+
+  const deleteDepartment = React.useCallback(
+    async (id: string) => {
+      let prevDepartments: Department[] = [];
+      setDepartments((prev) => {
+        prevDepartments = prev;
+        return prev.filter((d) => d.id !== id);
+      });
+      const { error } = await deleteDepartmentInSupabase(id);
+      if (error) {
+        setDepartments(prevDepartments);
+        toast.error(`Couldn't delete department: ${error}`);
+      }
+    },
+    [setDepartments]
+  );
+
+  const checkInAttendance = React.useCallback(
+    async (shiftId: string, doctorId: string) => {
+      const newRecord: AttendanceRecord = {
+        id: crypto.randomUUID(),
+        shiftId,
+        doctorId,
+        checkInTime: new Date().toISOString(),
+        status: "checked_in",
+      };
+      let prevRecords: AttendanceRecord[] = [];
+      setAttendanceRecords((prev) => {
+        prevRecords = prev;
+        return [newRecord, ...prev];
+      });
+      const { error } = await checkInInSupabase(newRecord);
+      if (error) {
+        setAttendanceRecords(prevRecords);
+        toast.error(`Couldn't check in: ${error}`);
+      }
+    },
+    [setAttendanceRecords]
+  );
+
+  const checkOutAttendance = React.useCallback(
+    async (id: string) => {
+      const now = new Date().toISOString();
+      let prevRecords: AttendanceRecord[] = [];
+      setAttendanceRecords((prev) => {
+        prevRecords = prev;
+        return prev.map((r) => (r.id === id ? { ...r, checkOutTime: now, status: "checked_out" } : r));
+      });
+      const { error } = await checkOutInSupabase(id, now);
+      if (error) {
+        setAttendanceRecords(prevRecords);
+        toast.error(`Couldn't check out: ${error}`);
+      }
+    },
+    [setAttendanceRecords]
+  );
+
+  const verifyAttendance = React.useCallback(
+    async (id: string, verifierProfileId: string) => {
+      const now = new Date().toISOString();
+      let prevRecords: AttendanceRecord[] = [];
+      setAttendanceRecords((prev) => {
+        prevRecords = prev;
+        return prev.map((r) =>
+          r.id === id
+            ? { ...r, status: "verified", verifiedByProfileId: verifierProfileId, verifiedAt: now }
+            : r
+        );
+      });
+      const { error } = await verifyAttendanceInSupabase(id, verifierProfileId);
+      if (error) {
+        setAttendanceRecords(prevRecords);
+        toast.error(`Couldn't verify attendance: ${error}`);
+      }
+    },
+    [setAttendanceRecords]
+  );
+
   const value = React.useMemo(
     () => ({
       shifts,
@@ -1210,6 +1478,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
+      markDoctorDocumentViewed,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1222,10 +1491,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       submitRating,
       updateFacilityVerification,
       reviewFacilityDocument,
+      markFacilityDocumentViewed,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
       rejectDoctorRegistration,
+      departments,
+      createDepartment,
+      renameDepartment,
+      deleteDepartment,
+      attendanceRecords,
+      checkInAttendance,
+      checkOutAttendance,
+      verifyAttendance,
     }),
     [
       shifts,
@@ -1250,6 +1528,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
+      markDoctorDocumentViewed,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1262,10 +1541,19 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       submitRating,
       updateFacilityVerification,
       reviewFacilityDocument,
+      markFacilityDocumentViewed,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
       rejectDoctorRegistration,
+      departments,
+      createDepartment,
+      renameDepartment,
+      deleteDepartment,
+      attendanceRecords,
+      checkInAttendance,
+      checkOutAttendance,
+      verifyAttendance,
     ]
   );
 

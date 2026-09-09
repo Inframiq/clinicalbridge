@@ -38,8 +38,12 @@ export function VerifyHospitalDialog({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const { reviewFacilityDocument, approveFacilityRegistration, rejectFacilityRegistration } =
-    useFacilities();
+  const {
+    reviewFacilityDocument,
+    markFacilityDocumentViewed,
+    approveFacilityRegistration,
+    rejectFacilityRegistration,
+  } = useFacilities();
 
   const uploadedDocs = Object.entries(facility.uploadedDocuments ?? {});
   const statusOf = (s?: DocumentReviewStatus): DocumentReviewStatus => s ?? "pending";
@@ -51,6 +55,10 @@ export function VerifyHospitalDialog({
 
   function handleReview(key: string, decision: "approved" | "rejected") {
     void reviewFacilityDocument(facility.id, key, decision);
+  }
+
+  function handleView(key: string) {
+    void markFacilityDocumentViewed(facility.id, key);
   }
 
   function handleApprove() {
@@ -99,9 +107,11 @@ export function VerifyHospitalDialog({
                 file={file}
                 status={statusOf(file.status)}
                 reviewedAt={file.reviewedAt}
+                viewedAt={file.viewedAt}
                 readOnly={alreadyDecided}
                 onApprove={() => handleReview(key, "approved")}
                 onReject={() => handleReview(key, "rejected")}
+                onView={() => handleView(key)}
               />
             ))
           )}

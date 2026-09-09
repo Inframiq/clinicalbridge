@@ -142,8 +142,21 @@ BEGIN
     END IF;
 END $$;
 
-UPDATE public.profiles SET role = 'locum_tenens' WHERE role = 'intern';
-UPDATE public.doctors SET doctor_kind = 'locum_tenens' WHERE doctor_kind = 'intern';
+-- Guarded like the RENAME VALUE calls above: a bare `WHERE role = 'intern'`
+-- fails immediately with "invalid input value for enum" if 'intern' isn't a
+-- member of the enum on this database (e.g. it was never added, or a prior
+-- partial run already dropped it) — Postgres has to coerce the literal to
+-- the enum type to even evaluate the comparison, before it looks at any rows.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.user_role'::regtype AND enumlabel = 'intern') THEN
+        UPDATE public.profiles SET role = 'locum_tenens' WHERE role = 'intern';
+    END IF;
+
+    IF EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid = 'public.doctor_kind'::regtype AND enumlabel = 'intern') THEN
+        UPDATE public.doctors SET doctor_kind = 'locum_tenens' WHERE doctor_kind = 'intern';
+    END IF;
+END $$;
 
 DO $$
 BEGIN

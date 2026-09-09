@@ -31,6 +31,7 @@ describe("DocumentPreviewCard", () => {
         readOnly={false}
         onApprove={onApprove}
         onReject={onReject}
+        onView={vi.fn()}
       />
     );
 
@@ -52,6 +53,7 @@ describe("DocumentPreviewCard", () => {
         readOnly={false}
         onApprove={vi.fn()}
         onReject={vi.fn()}
+        onView={vi.fn()}
       />
     );
     expect(screen.getByRole("img", { name: "ID" }).getAttribute("src")).toBe(
@@ -68,6 +70,7 @@ describe("DocumentPreviewCard", () => {
         readOnly={false}
         onApprove={vi.fn()}
         onReject={vi.fn()}
+        onView={vi.fn()}
       />
     );
     expect(screen.getByText(/can't be opened here/i)).toBeTruthy();
@@ -84,6 +87,7 @@ describe("DocumentPreviewCard", () => {
         readOnly={false}
         onApprove={vi.fn()}
         onReject={vi.fn()}
+        onView={vi.fn()}
       />
     );
     expect(screen.getByText("Verified")).toBeTruthy();
@@ -99,9 +103,64 @@ describe("DocumentPreviewCard", () => {
         readOnly
         onApprove={vi.fn()}
         onReject={vi.fn()}
+        onView={vi.fn()}
       />
     );
     expect(btn(/approve/i).disabled).toBe(true);
     expect(btn(/reject/i).disabled).toBe(true);
+  });
+
+  it("shows 'Not viewed' until viewedAt is set, then shows 'Viewed'", () => {
+    const { rerender } = render(
+      <DocumentPreviewCard
+        label="ID"
+        file={imageFile}
+        status="pending"
+        readOnly={false}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onView={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Not viewed")).toBeTruthy();
+
+    rerender(
+      <DocumentPreviewCard
+        label="ID"
+        file={imageFile}
+        status="pending"
+        viewedAt="2026-02-02T00:00:00.000Z"
+        readOnly={false}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onView={vi.fn()}
+      />
+    );
+    expect(screen.getByText("Viewed")).toBeTruthy();
+  });
+
+  it("opens the full-screen viewer and fires onView, with Approve/Reject present there too", () => {
+    const onView = vi.fn();
+    const onApprove = vi.fn();
+    render(
+      <DocumentPreviewCard
+        label="ID"
+        file={imageFile}
+        status="pending"
+        readOnly={false}
+        onApprove={onApprove}
+        onReject={vi.fn()}
+        onView={onView}
+      />
+    );
+
+    fireEvent.click(btn(/full screen/i));
+    expect(onView).toHaveBeenCalledTimes(1);
+
+    // Two Approve buttons now: the inline footer and the full-screen viewer.
+    const approveButtons = screen.getAllByRole("button", { name: /approve/i });
+    expect(approveButtons.length).toBe(2);
+    fireEvent.click(approveButtons[approveButtons.length - 1]);
+    expect(onApprove).toHaveBeenCalledTimes(1);
   });
 });

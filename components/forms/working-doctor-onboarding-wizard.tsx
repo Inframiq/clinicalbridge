@@ -103,8 +103,8 @@ const initialDefaults: FormValues = {
 
 export function WorkingDoctorOnboardingWizard() {
   const router = useRouter();
-  const { login, refreshProfile } = useAuthRole();
-  const { registerSelfDoctor } = useDoctors();
+  const { login, refreshProfile, profile } = useAuthRole();
+  const { doctors, registerSelfDoctor } = useDoctors();
   // Date-input bounds below come from module-level `todayIsoDate()` /
   // `isoDateYears*()` consts, which are evaluated once at module load and so can
   // differ by a calendar day between a long-lived server process and the
@@ -149,6 +149,25 @@ export function WorkingDoctorOnboardingWizard() {
       reset(autosavedData);
     }
   }, [isHydrated, autosavedData, reset]);
+
+  // Resuming after "Needs Changes" clears the local autosave draft the moment
+  // the original application was submitted, so without this the applicant
+  // would have to re-upload every document (including ones a super admin
+  // already approved) just to fix the one that was rejected.
+  useEffect(() => {
+    if (!isHydrated || !profile?.id) return;
+    if (Object.keys(uploadedFiles).length > 0) return;
+    const existing = doctors.find((d) => d.profileId === profile.id);
+    if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
+      setUploadedFiles(existing.uploadedDocuments);
+      setValue(
+        "documentsComplete",
+        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
+        { shouldValidate: false }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -203,15 +222,18 @@ export function WorkingDoctorOnboardingWizard() {
         }
 
         const userId = user.id;
-        const doctorId = crypto.randomUUID();
+        // A "Needs Changes" resubmission must land on the SAME doctors row,
+        // not insert a second one — doctors.profile_id has no unique
+        // constraint, so blindly inserting here would silently fork the
+        // applicant into two records instead of updating the reviewed one.
+        const existingDoctor = doctors.find((d) => d.profileId === userId);
+        const doctorId = existingDoctor?.id ?? crypto.randomUUID();
 
         if (userId) {
           // Format license_expiry for Postgres DATE type if present
           const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
 
-          const { error: doctorInsertErr } = await supabase.from("doctors").insert({
-            id: doctorId,
-            profile_id: userId,
+          const doctorFields = {
             doctor_kind: "working",
             first_name: values.firstName,
             last_name: values.lastName,
@@ -223,7 +245,11 @@ export function WorkingDoctorOnboardingWizard() {
             employment_type: "Full-Time",
             verified: false,
             uploaded_documents: uploadedFiles,
-          });
+          };
+
+          const { error: doctorInsertErr } = existingDoctor
+            ? await supabase.from("doctors").update(doctorFields).eq("id", doctorId)
+            : await supabase.from("doctors").insert({ id: doctorId, profile_id: userId, ...doctorFields });
 
           if (doctorInsertErr) {
             reportSupabase("onboarding.doctorInsert", doctorInsertErr, { level: "error" });

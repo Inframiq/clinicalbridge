@@ -28,7 +28,12 @@ export function VerifyDoctorDialog({
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const { reviewDoctorDocument, approveDoctorRegistration, rejectDoctorRegistration } = useDoctors();
+  const {
+    reviewDoctorDocument,
+    markDoctorDocumentViewed,
+    approveDoctorRegistration,
+    rejectDoctorRegistration,
+  } = useDoctors();
 
   const uploadedDocs = Object.entries(doctor.uploadedDocuments ?? {});
   const statusOf = (s?: DocumentReviewStatus): DocumentReviewStatus => s ?? "pending";
@@ -40,6 +45,10 @@ export function VerifyDoctorDialog({
 
   function handleReview(key: string, decision: "approved" | "rejected") {
     void reviewDoctorDocument(doctor.id, key, decision);
+  }
+
+  function handleView(key: string) {
+    void markDoctorDocumentViewed(doctor.id, key);
   }
 
   function handleApprove() {
@@ -85,9 +94,11 @@ export function VerifyDoctorDialog({
                 file={file}
                 status={statusOf(file.status)}
                 reviewedAt={file.reviewedAt}
+                viewedAt={file.viewedAt}
                 readOnly={alreadyDecided}
                 onApprove={() => handleReview(key, "approved")}
                 onReject={() => handleReview(key, "rejected")}
+                onView={() => handleView(key)}
               />
             ))
           )}

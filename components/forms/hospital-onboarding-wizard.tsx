@@ -82,8 +82,8 @@ const initialDefaults: FormValues = {
 
 export function HospitalOnboardingWizard() {
   const router = useRouter();
-  const { login, refreshProfile } = useAuthRole();
-  const { registerHospital } = useFacilities();
+  const { login, refreshProfile, profile } = useAuthRole();
+  const { facilities, registerHospital } = useFacilities();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -121,6 +121,25 @@ export function HospitalOnboardingWizard() {
       reset(autosavedData);
     }
   }, [isHydrated, autosavedData, reset]);
+
+  // Resuming after "Needs Changes" clears the local autosave draft the moment
+  // the original application was submitted, so without this the applicant
+  // would have to re-upload every document (including ones a super admin
+  // already approved) just to fix the one that was rejected.
+  useEffect(() => {
+    if (!isHydrated || !profile?.id) return;
+    if (Object.keys(uploadedFiles).length > 0) return;
+    const existing = facilities.find((f) => f.profileId === profile.id);
+    if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
+      setUploadedFiles(existing.uploadedDocuments);
+      setValue(
+        "documentsComplete",
+        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
+        { shouldValidate: false }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -175,12 +194,15 @@ export function HospitalOnboardingWizard() {
         }
 
         const userId = user.id;
-        const facilityId = crypto.randomUUID();
+        // A "Needs Changes" resubmission must land on the SAME facilities row,
+        // not insert a second one — facilities.profile_id has no unique
+        // constraint, so blindly inserting here would silently fork the
+        // applicant into two records instead of updating the reviewed one.
+        const existingFacility = facilities.find((f) => f.profileId === userId);
+        const facilityId = existingFacility?.id ?? crypto.randomUUID();
 
         if (userId) {
-          const { error: facilityInsertErr } = await supabase.from("facilities").insert({
-            id: facilityId,
-            profile_id: userId,
+          const facilityFields = {
             name: values.name,
             registration_number: values.registrationNumber,
             government_license: values.governmentLicense,
@@ -190,7 +212,11 @@ export function HospitalOnboardingWizard() {
             email: values.email,
             phone: values.phone,
             uploaded_documents: uploadedFiles,
-          });
+          };
+
+          const { error: facilityInsertErr } = existingFacility
+            ? await supabase.from("facilities").update(facilityFields).eq("id", facilityId)
+            : await supabase.from("facilities").insert({ id: facilityId, profile_id: userId, ...facilityFields });
 
           if (facilityInsertErr) {
             reportSupabase("onboarding.facilityInsert", facilityInsertErr, { level: "error" });

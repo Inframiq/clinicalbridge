@@ -113,7 +113,7 @@ export async function updateDoctorVerificationInSupabase(
  */
 export async function updateDoctorRegistrationStatusInSupabase(
   profileId: string | undefined,
-  status: "Approved" | "Rejected",
+  status: "Approved" | "Rejected" | "Needs Changes",
   client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };

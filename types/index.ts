@@ -272,3 +272,22 @@ export interface Rating {
   comment?: string;
   createdAt: string;
 }
+
+export interface Department {
+  id: string;
+  facilityId: string;
+  name: string;
+}
+
+export type AttendanceStatus = "checked_in" | "checked_out" | "verified";
+
+export interface AttendanceRecord {
+  id: string;
+  shiftId: string;
+  doctorId: string;
+  checkInTime?: string;
+  checkOutTime?: string;
+  verifiedByProfileId?: string;
+  verifiedAt?: string;
+  status: AttendanceStatus;
+}

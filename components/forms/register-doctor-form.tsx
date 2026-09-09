@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,7 +16,10 @@ import {
 } from "@/components/ui/select";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useDoctors } from "@/hooks/use-doctors";
-import { DEPARTMENTS } from "@/lib/mock-data/departments";
+import { useDepartments } from "@/hooks/use-departments";
+import { useFacilities } from "@/hooks/use-facilities";
+import { useAuthRole } from "@/context/auth-provider";
+import { CITY_MEDICAL } from "@/context/app-data-provider";
 
 const experienceOptions = ["0-2 Years", "2-4 Years", "4-6 Years", "6-8 Years", "8-10 Years", "10+ Years"];
 
@@ -34,11 +38,21 @@ type FormValues = z.infer<typeof schema>;
 
 export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
   const { registerDoctor } = useDoctors();
+  const { departments } = useDepartments();
+  const { facilities } = useFacilities();
+  const { profile } = useAuthRole();
+
+  const myFacility =
+    facilities.find((f) => f.profileId === profile?.id) ??
+    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {
     register,
     control,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -46,13 +60,20 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
       firstName: "",
       lastName: "",
       licenseNumber: "",
-      department: DEPARTMENTS[0],
+      department: "",
       qualification: "",
       yearsOfExperience: experienceOptions[0],
       email: "",
       phone: "",
     },
   });
+
+  const department = watch("department");
+  useEffect(() => {
+    if (!department && myDepartments.length > 0) {
+      setValue("department", myDepartments[0].name);
+    }
+  }, [department, myDepartments, setValue]);
 
   async function onSubmit(values: FormValues) {
     try {
@@ -96,24 +117,30 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field>
             <FieldLabel>Department</FieldLabel>
             <FieldContent>
-              <Controller
-                control={control}
-                name="department"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {DEPARTMENTS.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+              {myDepartments.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  No departments yet — add one on the Departments page first.
+                </p>
+              ) : (
+                <Controller
+                  control={control}
+                  name="department"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {myDepartments.map((d) => (
+                          <SelectItem key={d.id} value={d.name}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
             </FieldContent>
           </Field>
           <Field data-invalid={!!errors.qualification}>

@@ -18,6 +18,8 @@ export interface UploadedFileMetadata {
    */
   status?: DocumentReviewStatus;
   reviewedAt?: string;
+  /** Set the first time a super admin opens this document in the full-screen viewer. */
+  viewedAt?: string;
 }
 
 /**

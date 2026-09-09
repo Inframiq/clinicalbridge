@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,12 +19,13 @@ import {
 } from "@/components/ui/select";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useShifts } from "@/hooks/use-shifts";
+import { useDepartments } from "@/hooks/use-departments";
+import { useFacilities } from "@/hooks/use-facilities";
+import { useAuthRole } from "@/context/auth-provider";
+import { CITY_MEDICAL } from "@/context/app-data-provider";
 import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
-import { DEPARTMENTS } from "@/lib/mock-data/departments";
 import { formatCurrency, to12Hour } from "@/lib/format";
 import type { ExperienceLevel, ShiftType } from "@/types";
-
-const departments: string[] = [...DEPARTMENTS];
 
 const shiftTypes: ShiftType[] = [
   "Emergency (Level 1)",
@@ -66,12 +68,24 @@ function estimateHours(start: string, end: string) {
 
 export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const { broadcastShift } = useShifts();
+  const { departments } = useDepartments();
+  const { facilities } = useFacilities();
+  const { profile } = useAuthRole();
+
+  // Prefer the signed-in hospital's own facility (real accounts); fall back to
+  // the demo "City Medical Center" facility when there's no match (offline
+  // mode, or a super admin/other role previewing this form).
+  const myFacility =
+    facilities.find((f) => f.profileId === profile?.id) ??
+    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {
     register,
     control,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -79,7 +93,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
       date: new Date().toISOString().slice(0, 10),
       startTime: "08:00",
       endTime: "16:00",
-      department: departments[0],
+      department: "",
       shiftType: shiftTypes[0],
       subSpecialty: "",
       hourlyRate: 120,
@@ -90,13 +104,23 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
     },
   });
 
-  const [startTime, endTime, hourlyRate, doctorsNeeded, codeRed] = watch([
+  const [startTime, endTime, hourlyRate, doctorsNeeded, codeRed, department] = watch([
     "startTime",
     "endTime",
     "hourlyRate",
     "doctorsNeeded",
     "codeRed",
+    "department",
   ]);
+
+  // Departments load asynchronously from Supabase; default the field to the
+  // first one once available instead of at form-init time when the list was
+  // still empty.
+  useEffect(() => {
+    if (!department && myDepartments.length > 0) {
+      setValue("department", myDepartments[0].name);
+    }
+  }, [department, myDepartments, setValue]);
 
   const hours = estimateHours(startTime, endTime);
   const estimatedTotal = hours * (hourlyRate || 0) * (doctorsNeeded || 0);
@@ -106,6 +130,11 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
       await broadcastShift({
         title: values.department.replace(" Department", "").replace(" Unit", ""),
         department: values.department,
+        facilityId: myFacility?.id ?? CITY_MEDICAL.facilityId,
+        facilityName: myFacility?.name ?? CITY_MEDICAL.facilityName,
+        location: myFacility
+          ? { address: myFacility.name, city: myFacility.city, state: "", lat: 0, lng: 0 }
+          : CITY_MEDICAL.location,
         date: values.date,
         startTime: to12Hour(values.startTime),
         endTime: to12Hour(values.endTime),
@@ -156,24 +185,30 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field>
             <FieldLabel>Department / Unit</FieldLabel>
             <FieldContent>
-              <Controller
-                control={control}
-                name="department"
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departments.map((d) => (
-                        <SelectItem key={d} value={d}>
-                          {d}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
+              {myDepartments.length === 0 ? (
+                <p className="rounded-md border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                  No departments yet — add one on the Departments page first.
+                </p>
+              ) : (
+                <Controller
+                  control={control}
+                  name="department"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {myDepartments.map((d) => (
+                          <SelectItem key={d.id} value={d.name}>
+                            {d.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              )}
             </FieldContent>
           </Field>
           <Field>
@@ -285,7 +320,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <FieldContent>
             <div className="flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
               <MapPin className="size-4 shrink-0" />
-              {ACTIVE_ORGANIZATION.name}, {ACTIVE_ORGANIZATION.address}
+              {myFacility ? `${myFacility.name}, ${myFacility.city}` : `${ACTIVE_ORGANIZATION.name}, ${ACTIVE_ORGANIZATION.address}`}
             </div>
           </FieldContent>
         </Field>
