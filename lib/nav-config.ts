@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { UserRole } from "@/types";
 import {
   LayoutDashboard,
   Radio,
@@ -52,31 +53,22 @@ export const workingDoctorNavItems: NavItem[] = [
   { label: "Settings", href: "/working-doctor/settings", icon: Settings },
 ];
 
-export const locumNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/locum/dashboard", icon: LayoutDashboard },
-  { label: "Marketplace", href: "/locum/marketplace", icon: Store },
-  { label: "Shift Hub", href: "/locum/shift-hub", icon: Activity },
-  { label: "My Shifts", href: "/locum/my-shifts", icon: CalendarCheck },
-  { label: "Applications", href: "/locum/applications", icon: ClipboardList },
-  { label: "My Schedule", href: "/locum/my-schedule", icon: CalendarDays },
-  { label: "Post-Shift", href: "/locum/post-shift", icon: ClipboardCheck },
-  { label: "Earnings", href: "/locum/earnings", icon: DollarSign },
-  { label: "Ratings", href: "/locum/ratings", icon: Star },
-  { label: "Analytics & Reports", href: "/locum/analytics", icon: BarChart3 },
-  { label: "Wallet & Payouts", href: "/locum/wallet-payouts", icon: Wallet },
-  { label: "Documents", href: "/locum/documents", icon: FileText },
-  { label: "Messages", href: "/locum/messages", icon: MessageSquare },
-  { label: "Notifications", href: "/locum/notifications", icon: Bell },
-  { label: "Settings", href: "/locum/settings", icon: Settings },
-];
-
-export const internNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/intern/dashboard", icon: LayoutDashboard },
-  { label: "Opportunities", href: "/intern/opportunities", icon: Store },
-  { label: "My Assignments", href: "/intern/my-assignments", icon: CalendarCheck },
-  { label: "Applications", href: "/intern/applications", icon: ClipboardList },
-  { label: "Calendar", href: "/intern/calendar", icon: CalendarDays },
-  { label: "Settings", href: "/intern/settings", icon: Settings },
+export const locumTenensNavItems: NavItem[] = [
+  { label: "Dashboard", href: "/locum-tenens/dashboard", icon: LayoutDashboard },
+  { label: "Marketplace", href: "/locum-tenens/marketplace", icon: Store },
+  { label: "Shift Hub", href: "/locum-tenens/shift-hub", icon: Activity },
+  { label: "My Shifts", href: "/locum-tenens/my-shifts", icon: CalendarCheck },
+  { label: "Applications", href: "/locum-tenens/applications", icon: ClipboardList },
+  { label: "My Schedule", href: "/locum-tenens/my-schedule", icon: CalendarDays },
+  { label: "Post-Shift", href: "/locum-tenens/post-shift", icon: ClipboardCheck },
+  { label: "Earnings", href: "/locum-tenens/earnings", icon: DollarSign },
+  { label: "Ratings", href: "/locum-tenens/ratings", icon: Star },
+  { label: "Analytics & Reports", href: "/locum-tenens/analytics", icon: BarChart3 },
+  { label: "Wallet & Payouts", href: "/locum-tenens/wallet-payouts", icon: Wallet },
+  { label: "Documents", href: "/locum-tenens/documents", icon: FileText },
+  { label: "Messages", href: "/locum-tenens/messages", icon: MessageSquare },
+  { label: "Notifications", href: "/locum-tenens/notifications", icon: Bell },
+  { label: "Settings", href: "/locum-tenens/settings", icon: Settings },
 ];
 
 export const superAdminNavItems: NavItem[] = [
@@ -86,3 +78,16 @@ export const superAdminNavItems: NavItem[] = [
   { label: "Analytics", href: "/super-admin/analytics", icon: BarChart3 },
   { label: "Settings", href: "/super-admin/settings", icon: Settings },
 ];
+
+/**
+ * Nav items keyed by role. `NavItem.icon` is a lucide component reference, which
+ * cannot cross the RSC → Client boundary — so the role layouts (async Server
+ * Components) must NOT pass a nav array as a prop. They pass `requiredRole`
+ * (a plain string) and the client `AppShell` looks the items up here.
+ */
+export const navItemsByRole: Record<UserRole, NavItem[]> = {
+  hospital: hospitalNavItems,
+  working_doctor: workingDoctorNavItems,
+  locum_tenens: locumTenensNavItems,
+  super_admin: superAdminNavItems,
+};

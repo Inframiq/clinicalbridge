@@ -69,8 +69,7 @@ function MicrosoftIcon() {
 const roleOnboardingPaths: Record<UserRole, string> = {
   hospital: "/onboarding/hospital",
   working_doctor: "/onboarding/working-doctor",
-  locum_doctor: "/onboarding/locum",
-  intern: "/onboarding/intern",
+  locum_tenens: "/onboarding/locum-tenens",
   super_admin: "/super-admin/dashboard",
 };
 
@@ -268,7 +267,7 @@ export function LoginForm() {
           <FieldDescription className="text-center">
             Don&apos;t have an account?{" "}
             <Link
-              href={roleOnboardingPaths[role] || "/onboarding"}
+              href={`/signup?role=${role}`}
               className="font-medium text-brand hover:underline"
             >
               Sign up as {ROLE_CONFIG[role].label}

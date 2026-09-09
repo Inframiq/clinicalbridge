@@ -28,7 +28,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 0.8,
     matchScore: 95,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Emergency Department",
     verification: FULLY_VERIFIED,
   },
@@ -74,7 +74,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.2,
     matchScore: 95,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Emergency Department",
     verification: FULLY_VERIFIED,
   },
@@ -97,7 +97,7 @@ export const doctors: Doctor[] = [
     status: "active",
     distanceMiles: 1.5,
     matchScore: 94,
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Orthopedics",
     verification: FULLY_VERIFIED,
   },
@@ -118,7 +118,7 @@ export const doctors: Doctor[] = [
     email: "michael.lee@healthmail.com",
     phone: "+1 (555) 123-4571",
     status: "active",
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Intensive Care Unit",
     verification: FULLY_VERIFIED,
   },
@@ -139,29 +139,8 @@ export const doctors: Doctor[] = [
     email: "priya.shah@healthmail.com",
     phone: "+1 (555) 123-4572",
     status: "active",
-    doctorKind: "locum",
+    doctorKind: "locum_tenens",
     department: "Pediatrics Unit",
-    verification: FULLY_VERIFIED,
-  },
-  {
-    id: "doc-alex-nguyen",
-    firstName: "Alex",
-    lastName: "Nguyen",
-    specialty: "General Medicine",
-    rating: 4.6,
-    reviewCount: 12,
-    licenseNumber: "NY-723456",
-    licenseExpiry: "2027-02-01",
-    npiNumber: "1234567896",
-    yearsOfExperience: "0-2 Years",
-    employmentType: "Full-Time",
-    preferredLocations: ["New York, NY"],
-    verified: true,
-    email: "alex.nguyen@healthmail.com",
-    phone: "+1 (555) 123-4573",
-    status: "active",
-    doctorKind: "intern",
-    department: "General Medicine",
     verification: FULLY_VERIFIED,
   },
   {
@@ -183,7 +162,36 @@ export const doctors: Doctor[] = [
     status: "onboarding",
     doctorKind: "working",
     department: "Emergency Department",
-    verification: { medicalCouncil: true, degree: true, identity: false, hospitalApproval: false },
+    registrationStatus: "Submitted",
+    verification: { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false },
+    uploadedDocuments: {
+      medicalCouncil: {
+        name: "medical-council-registration.jpg",
+        path: "demo/rachel-adams/medical-council-registration.jpg",
+        publicUrl:
+          "https://images.unsplash.com/photo-1554224155-6726b3ff858f?auto=format&fit=max&w=1400",
+        size: 214_000,
+        type: "image/jpeg",
+        uploadedAt: "2026-08-30T10:12:00.000Z",
+      },
+      degree: {
+        name: "mbbs-degree-certificate.pdf",
+        path: "demo/rachel-adams/mbbs-degree-certificate.pdf",
+        publicUrl: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+        size: 13_264,
+        type: "application/pdf",
+        uploadedAt: "2026-08-30T10:13:00.000Z",
+      },
+      identity: {
+        name: "govt-id.png",
+        path: "demo/rachel-adams/govt-id.png",
+        publicUrl:
+          "https://images.unsplash.com/photo-1586281380349-632531db7ed4?auto=format&fit=max&w=1400",
+        size: 305_000,
+        type: "image/png",
+        uploadedAt: "2026-08-30T10:14:00.000Z",
+      },
+    },
   },
   {
     id: "doc-priya-shah-leave",
@@ -208,11 +216,9 @@ export const doctors: Doctor[] = [
   },
 ];
 
-/** The signed-in Locum Doctor's identity. */
+/** The signed-in Locum Tenens doctor's identity. */
 export const currentDoctor = doctors[0];
 /** The signed-in Working Doctor's identity. */
 export const currentWorkingDoctor = doctors[1];
-/** The signed-in Locum Doctor's identity (alias, kept for role-name clarity). */
-export const currentLocumDoctor = doctors[0];
-/** The signed-in Intern's identity. */
-export const currentIntern = doctors[6];
+/** The signed-in Locum Tenens doctor's identity (alias, kept for role-name clarity). */
+export const currentLocumTenensDoctor = doctors[0];

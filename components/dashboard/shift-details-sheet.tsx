@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bookmark, BookmarkCheck, CheckCircle2, MessageSquare, Phone, User, XCircle } from "lucide-react";
+import { Bookmark, BookmarkCheck, CheckCircle2, LogOut, MessageSquare, Phone, User, XCircle } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -19,6 +19,7 @@ import { LiveMap } from "@/components/dashboard/live-map";
 import { useApplications } from "@/hooks/use-applications";
 import { useSavedShifts } from "@/hooks/use-saved-shifts";
 import { useShifts } from "@/hooks/use-shifts";
+import { useAttendance } from "@/hooks/use-attendance";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { shiftStatusMeta } from "@/lib/status";
 import type { Shift } from "@/types";
@@ -37,11 +38,18 @@ export function ShiftDetailsSheet({
   const { applyToShift } = useApplications();
   const { savedShifts, toggleSaveShift } = useSavedShifts();
   const { respondToShiftAssignment } = useShifts();
+  const { attendanceRecords, checkInAttendance, checkOutAttendance } = useAttendance();
 
   const meta = shiftStatusMeta[shift.status];
   const isSaved = savedShifts.some((s) => s.shiftId === shift.id && s.doctorId === currentDoctorId);
   const isMyPendingAssignment =
     shift.assignedDoctorId === currentDoctorId && shift.status === "pending";
+  const isMyActiveOrConfirmedShift =
+    shift.assignedDoctorId === currentDoctorId &&
+    (shift.status === "confirmed" || shift.status === "active");
+  const myAttendance = attendanceRecords.find(
+    (r) => r.shiftId === shift.id && r.doctorId === currentDoctorId
+  );
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -125,6 +133,37 @@ export function ShiftDetailsSheet({
                 <XCircle className="size-4" /> Decline
               </Button>
             </div>
+          ) : isMyActiveOrConfirmedShift ? (
+            <div className="flex items-center justify-between gap-2">
+              {!myAttendance ? (
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    checkInAttendance(shift.id, currentDoctorId);
+                    toast.success(`Checked in to ${shift.title}`);
+                  }}
+                >
+                  <CheckCircle2 className="size-4" /> Check In
+                </Button>
+              ) : myAttendance.status === "checked_in" ? (
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    checkOutAttendance(myAttendance.id);
+                    toast.success(`Checked out of ${shift.title}`);
+                  }}
+                >
+                  <LogOut className="size-4" /> Check Out
+                </Button>
+              ) : (
+                <StatusBadge
+                  label={myAttendance.status === "verified" ? "Attendance Verified" : "Checked Out — Awaiting Verification"}
+                  tone={myAttendance.status === "verified" ? "success" : "info"}
+                  dot={false}
+                />
+              )}
+            </div>
           ) : shift.status === "open" ? (
             <div className="flex gap-2">
               <Button
@@ -151,7 +190,7 @@ export function ShiftDetailsSheet({
             variant="ghost"
             onClick={() => {
               toast.success(`Message sent to ${shift.facilityName}`);
-              router.push("/locum/messages");
+              router.push("/locum-tenens/messages");
             }}
           >
             <MessageSquare className="size-4" /> Contact Hospital Coordinator

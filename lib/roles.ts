@@ -2,7 +2,6 @@ import {
   Building2,
   Stethoscope,
   Briefcase,
-  GraduationCap,
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
@@ -34,21 +33,13 @@ export const ROLE_CONFIG: Record<UserRole, RoleConfig> = {
     icon: Stethoscope,
     homeHref: "/working-doctor/dashboard",
   },
-  locum_doctor: {
-    value: "locum_doctor",
-    label: "Locum Doctor",
+  locum_tenens: {
+    value: "locum_tenens",
+    label: "Locum Tenens",
     description: "Browse and apply to open shifts",
     icon: Briefcase,
-    homeHref: "/locum/dashboard",
-    signupHref: "/onboarding/locum",
-  },
-  intern: {
-    value: "intern",
-    label: "Intern",
-    description: "View supervised replacement opportunities",
-    icon: GraduationCap,
-    homeHref: "/intern/dashboard",
-    signupHref: "/onboarding/intern",
+    homeHref: "/locum-tenens/dashboard",
+    signupHref: "/onboarding/locum-tenens",
   },
   super_admin: {
     value: "super_admin",
@@ -62,8 +53,7 @@ export const ROLE_CONFIG: Record<UserRole, RoleConfig> = {
 export const ROLE_ORDER: UserRole[] = [
   "hospital",
   "working_doctor",
-  "locum_doctor",
-  "intern",
+  "locum_tenens",
   "super_admin",
 ];
 

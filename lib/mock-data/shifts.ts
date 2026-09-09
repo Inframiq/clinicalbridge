@@ -133,7 +133,6 @@ export const shifts: Shift[] = [
     description: "General pediatric outpatient coverage.",
     status: "open",
     codeRed: false,
-    replacementStage: "locum_only",
   },
   {
     id: "shift-icu-007",
@@ -225,7 +224,6 @@ export const shifts: Shift[] = [
     requiredQualification: "MD with active state license",
     supervisorName: "Dr. Linda Park, Clinic Lead",
     emergencyContact: "+1 (555) 900-1133",
-    internSupervisionRequired: true,
   },
   {
     id: "shift-er-past-012",
@@ -257,11 +255,9 @@ export const shifts: Shift[] = [
     doctorsNeeded: 1,
     experienceLevel: "Entry Level",
     description: "Supervised general medicine outpatient coverage.",
-    status: "pending",
+    status: "open",
     codeRed: false,
-    assignedDoctorId: "doc-alex-nguyen",
     supervisorName: "Dr. Linda Park, Clinic Lead",
-    internSupervisionRequired: true,
   },
   {
     id: "shift-gen-past-014",
@@ -278,9 +274,7 @@ export const shifts: Shift[] = [
     description: "Supervised general medicine outpatient coverage.",
     status: "completed",
     codeRed: false,
-    assignedDoctorId: "doc-alex-nguyen",
     supervisorName: "Dr. Linda Park, Clinic Lead",
-    internSupervisionRequired: true,
   },
 ];
 

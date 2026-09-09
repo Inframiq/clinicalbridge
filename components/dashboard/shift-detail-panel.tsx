@@ -1,7 +1,11 @@
-import { Clock, MapPin, Wallet } from "lucide-react";
+import { Clock, MapPin, ShieldCheck, Wallet } from "lucide-react";
+import { toast } from "sonner";
 import { Person } from "@/components/dashboard/person";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { useAttendance } from "@/hooks/use-attendance";
+import { useAuthRole } from "@/context/auth-provider";
 import type { Shift } from "@/types";
 import { shiftStatusMeta } from "@/lib/status";
 import { formatCurrency, formatHoursMinutes } from "@/lib/format";
@@ -9,6 +13,11 @@ import { getDoctorName } from "@/lib/selectors";
 
 export function ShiftDetailPanel({ shift }: { shift: Shift }) {
   const meta = shiftStatusMeta[shift.status];
+  const { attendanceRecords, verifyAttendance } = useAttendance();
+  const { profile } = useAuthRole();
+  const attendance = attendanceRecords.find(
+    (r) => r.shiftId === shift.id && r.doctorId === shift.assignedDoctorId
+  );
   const elapsed = shift.elapsedMinutes ?? 0;
   const total = shift.totalMinutes ?? 480;
   const remaining = Math.max(0, total - elapsed);
@@ -77,6 +86,45 @@ export function ShiftDetailPanel({ shift }: { shift: Shift }) {
             <div>
               <p className="font-semibold text-foreground">{formatHoursMinutes(remaining)}</p>
               <p className="text-xs text-muted-foreground">Remaining</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {attendance && (
+        <div className="rounded-xl border border-border p-4">
+          <p className="mb-2 text-sm font-medium text-foreground">Attendance</p>
+          <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-muted-foreground">Checked In</p>
+              <p className="mt-0.5 font-medium text-foreground">
+                {attendance.checkInTime ? new Date(attendance.checkInTime).toLocaleTimeString() : "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Checked Out</p>
+              <p className="mt-0.5 font-medium text-foreground">
+                {attendance.checkOutTime ? new Date(attendance.checkOutTime).toLocaleTimeString() : "—"}
+              </p>
+            </div>
+            <div className="flex items-end">
+              {attendance.status === "verified" ? (
+                <StatusBadge label="Verified" tone="success" dot={false} />
+              ) : attendance.status === "checked_out" ? (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    if (profile?.id) {
+                      verifyAttendance(attendance.id, profile.id);
+                      toast.success("Attendance verified");
+                    }
+                  }}
+                >
+                  <ShieldCheck className="size-3.5" /> Verify Attendance
+                </Button>
+              ) : (
+                <StatusBadge label="Checked In" tone="info" dot={false} />
+              )}
             </div>
           </div>
         </div>

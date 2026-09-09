@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
@@ -73,8 +73,7 @@ function MicrosoftIcon() {
 const roleOnboardingPaths: Record<UserRole, string> = {
   hospital: "/onboarding/hospital",
   working_doctor: "/onboarding/working-doctor",
-  locum_doctor: "/onboarding/locum",
-  intern: "/onboarding/intern",
+  locum_tenens: "/onboarding/locum-tenens",
   super_admin: "/super-admin/dashboard",
 };
 
@@ -87,12 +86,17 @@ export function SignupForm() {
   const [role, setRole] = useState<UserRole>(defaultRole);
   const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    const qRole = searchParams.get("role") as UserRole;
-    if (qRole && ROLE_CONFIG[qRole]) {
-      setRole(qRole);
+  // Keep `role` in sync with a `?role=` query change (e.g. a link to this same route with a
+  // different role) without an Effect - adjusting state during render, per React's guidance,
+  // avoids the extra committed render pass a `useEffect` here would cause.
+  const roleParam = searchParams.get("role");
+  const [syncedRoleParam, setSyncedRoleParam] = useState(roleParam);
+  if (roleParam !== syncedRoleParam) {
+    setSyncedRoleParam(roleParam);
+    if (roleParam && ROLE_CONFIG[roleParam as UserRole]) {
+      setRole(roleParam as UserRole);
     }
-  }, [searchParams]);
+  }
 
   const {
     register,
@@ -105,10 +109,24 @@ export function SignupForm() {
 
   async function onSubmit(data: FormValues) {
     if (data.email && data.password && data.fullName) {
-      const { error, user, hasSession } = await signUpWithSupabase(data.email, data.password, role, data.fullName);
+      const { error, user, hasSession, isDuplicateEmail } = await signUpWithSupabase(
+        data.email,
+        data.password,
+        role,
+        data.fullName
+      );
 
       if (error) {
-        toast.error(error.message || "Failed to sign up");
+        if (isDuplicateEmail) {
+          toast.error("An account with this email already exists.", {
+            action: {
+              label: "Log in",
+              onClick: () => router.push("/login"),
+            },
+          });
+        } else {
+          toast.error(error.message || "Failed to sign up");
+        }
         return;
       }
 

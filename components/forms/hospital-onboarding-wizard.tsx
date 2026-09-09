@@ -26,6 +26,7 @@ import { useFacilities } from "@/hooks/use-facilities";
 import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
+import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 
 const hospitalTypes = [
   "Multi-Specialty Hospital",
@@ -44,6 +45,7 @@ const schema = z.object({
   contactPerson: z.string().min(1, "Required"),
   email: z.string().email("Enter a valid email"),
   phone: z.string().min(7, "Required"),
+  documentsComplete: z.boolean().refine((v) => v, "Please upload all required documents before continuing"),
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
 
@@ -53,7 +55,7 @@ const steps = [{ label: "Basic Info" }, { label: "Documents" }, { label: "Review
 
 const stepFields: Path<FormValues>[][] = [
   ["name", "registrationNumber", "governmentLicense", "hospitalType", "city", "contactPerson", "email", "phone"],
-  [],
+  ["documentsComplete"],
   ["agreeToTerms"],
 ];
 
@@ -74,13 +76,14 @@ const initialDefaults: FormValues = {
   contactPerson: "",
   email: "",
   phone: "",
+  documentsComplete: false,
   agreeToTerms: false,
 };
 
 export function HospitalOnboardingWizard() {
   const router = useRouter();
-  const { login, signUpWithSupabase, refreshProfile } = useAuthRole();
-  const { registerHospital } = useFacilities();
+  const { login, refreshProfile, profile } = useAuthRole();
+  const { facilities, registerHospital } = useFacilities();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -97,6 +100,7 @@ export function HospitalOnboardingWizard() {
     trigger,
     watch,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -118,6 +122,25 @@ export function HospitalOnboardingWizard() {
     }
   }, [isHydrated, autosavedData, reset]);
 
+  // Resuming after "Needs Changes" clears the local autosave draft the moment
+  // the original application was submitted, so without this the applicant
+  // would have to re-upload every document (including ones a super admin
+  // already approved) just to fix the one that was rejected.
+  useEffect(() => {
+    if (!isHydrated || !profile?.id) return;
+    if (Object.keys(uploadedFiles).length > 0) return;
+    const existing = facilities.find((f) => f.profileId === profile.id);
+    if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
+      setUploadedFiles(existing.uploadedDocuments);
+      setValue(
+        "documentsComplete",
+        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
+        { shouldValidate: false }
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isHydrated, profile?.id]);
+
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
 
@@ -127,12 +150,18 @@ export function HospitalOnboardingWizard() {
     setUploadingKey(null);
 
     if (error || !metadata) {
-      console.error(`Document upload failed for ${file.name}:`, error);
+      reportSupabase(`onboarding.documentUpload(${file.name})`, error, { level: "error" });
       toast.error(error?.message || `Failed to upload ${file.name}`);
       return;
     }
 
-    setUploadedFiles((prev) => ({ ...prev, [key]: metadata }));
+    setUploadedFiles((prev) => {
+      const next = { ...prev, [key]: metadata };
+      setValue("documentsComplete", Object.keys(next).length === documentChecklist.length, {
+        shouldValidate: false,
+      });
+      return next;
+    });
     toast.success(`${file.name} uploaded successfully!`);
   }
 
@@ -147,7 +176,15 @@ export function HospitalOnboardingWizard() {
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
-        const user = res.data?.user;
+        let user = res.data?.user;
+
+        if (!user) {
+          // The access token may simply be stale (e.g. this multi-step wizard with
+          // document uploads can easily run long enough to need a refresh) - retry
+          // once via the refresh token before discarding the filled-out form.
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          user = refreshed?.user ?? null;
+        }
 
         if (!user) {
           toast.error("Session expired or user not found. Please log in again.");
@@ -157,10 +194,15 @@ export function HospitalOnboardingWizard() {
         }
 
         const userId = user.id;
+        // A "Needs Changes" resubmission must land on the SAME facilities row,
+        // not insert a second one — facilities.profile_id has no unique
+        // constraint, so blindly inserting here would silently fork the
+        // applicant into two records instead of updating the reviewed one.
+        const existingFacility = facilities.find((f) => f.profileId === userId);
+        const facilityId = existingFacility?.id ?? crypto.randomUUID();
 
         if (userId) {
-          const { error: facilityInsertErr } = await supabase.from("facilities").insert({
-            profile_id: userId,
+          const facilityFields = {
             name: values.name,
             registration_number: values.registrationNumber,
             government_license: values.governmentLicense,
@@ -169,12 +211,16 @@ export function HospitalOnboardingWizard() {
             contact_person: values.contactPerson,
             email: values.email,
             phone: values.phone,
-            verification_status: uploadedFiles,
-          });
+            uploaded_documents: uploadedFiles,
+          };
+
+          const { error: facilityInsertErr } = existingFacility
+            ? await supabase.from("facilities").update(facilityFields).eq("id", facilityId)
+            : await supabase.from("facilities").insert({ id: facilityId, profile_id: userId, ...facilityFields });
 
           if (facilityInsertErr) {
-            console.error("Facilities insert DB Error:", facilityInsertErr);
-            toast.error(`Database Insert Failed: ${facilityInsertErr.message}`);
+            reportSupabase("onboarding.facilityInsert", facilityInsertErr, { level: "error" });
+            toast.error(`Database Insert Failed: ${describeSupabaseError(facilityInsertErr)}`);
             setIsSubmitting(false);
             return;
           }
@@ -187,8 +233,8 @@ export function HospitalOnboardingWizard() {
           }).eq("id", userId);
 
           if (profileUpdateErr) {
-            console.error("Profile update DB Error:", profileUpdateErr);
-            toast.error(`Profile Update Failed: ${profileUpdateErr.message}`);
+            reportSupabase("onboarding.profileUpdate", profileUpdateErr, { level: "error" });
+            toast.error(`Profile Update Failed: ${describeSupabaseError(profileUpdateErr)}`);
             setIsSubmitting(false);
             return;
           }
@@ -196,24 +242,30 @@ export function HospitalOnboardingWizard() {
           await refreshProfile();
         }
 
-        registerHospital({
-          name: values.name,
-          city: values.city,
-          registrationNumber: values.registrationNumber,
-          governmentLicense: values.governmentLicense,
-          hospitalType: values.hospitalType,
-          contactPerson: values.contactPerson,
-          email: values.email,
-          phone: values.phone,
-        });
+        try {
+          await registerHospital({
+            id: facilityId,
+            name: values.name,
+            city: values.city,
+            registrationNumber: values.registrationNumber,
+            governmentLicense: values.governmentLicense,
+            hospitalType: values.hospitalType,
+            contactPerson: values.contactPerson,
+            email: values.email,
+            phone: values.phone,
+          });
+        } catch {
+          // AppDataProvider already rolled back and showed an error toast
+          return;
+        }
 
         clearDraft();
         login("hospital");
         toast.success("Registration submitted! Your hospital is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        console.error("Submission Exception:", err);
+        const errorMsg = err instanceof Error ? err.message : describeSupabaseError(err);
+        reportSupabase("onboarding.submit", err, { level: "error" });
         toast.error(`Submission error: ${errorMsg}`);
       } finally {
         setIsSubmitting(false);
@@ -354,7 +406,7 @@ export function HospitalOnboardingWizard() {
                             <input
                               type="file"
                               className="hidden"
-                              accept=".pdf,.jpg,.jpeg,.png"
+                              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
                               onChange={(e) => {
                                 const file = e.target.files?.[0];
                                 if (file) handleFileUpload(doc.key, file);
@@ -365,6 +417,7 @@ export function HospitalOnboardingWizard() {
                       </div>
                     );
                   })}
+                  <FieldError errors={[errors.documentsComplete]} />
                 </div>
               )}
 

@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { reportSupabase } from "./log";
+
+export type DocumentReviewStatus = "pending" | "approved" | "rejected";
 
 export interface UploadedFileMetadata {
   name: string;
@@ -7,6 +11,15 @@ export interface UploadedFileMetadata {
   size: number;
   type: string;
   uploadedAt: string;
+  /**
+   * Per-document verification decision made by a super admin in the
+   * verification dialog. Absent on documents uploaded before this field
+   * existed — treat a missing value as "pending".
+   */
+  status?: DocumentReviewStatus;
+  reviewedAt?: string;
+  /** Set the first time a super admin opens this document in the full-screen viewer. */
+  viewedAt?: string;
 }
 
 /**
@@ -101,32 +114,48 @@ export async function uploadDocumentToStorage(
         upsert: true,
       });
 
-    let publicUrl = "";
-
     if (uploadError) {
-      console.warn("Supabase storage upload warning (bucket may not exist or missing permissions):", uploadError);
-      // Fallback local preview URL if bucket is missing in Supabase project instance
-      publicUrl = URL.createObjectURL(processedFile);
-    } else {
-      const { data } = supabase.storage
-        .from("documents")
-        .getPublicUrl(filePath);
-      publicUrl = data?.publicUrl || URL.createObjectURL(processedFile);
+      reportSupabase("uploadDocumentToStorage", uploadError);
+      // Online mode: a failed Storage upload must surface as an error, not a
+      // silent "success" holding a blob: URL — that URL is dead the moment
+      // this tab reloads, so the super admin would only ever see a blank
+      // preview. The wizard shows the error and the applicant re-tries.
+      // Offline/demo mode has no bucket by design, so the blob: preview is
+      // the best we can do and is acceptable there.
+      if (isSupabaseConfigured) {
+        return {
+          data: null,
+          error:
+            uploadError instanceof Error
+              ? uploadError
+              : new Error("Document upload failed. Please try again."),
+        };
+      }
+      const metadata: UploadedFileMetadata = {
+        name: file.name,
+        path: filePath,
+        publicUrl: URL.createObjectURL(processedFile),
+        size: processedFile.size,
+        type: processedFile.type || file.type,
+        uploadedAt: new Date().toISOString(),
+      };
+      return { data: metadata, error: null };
     }
 
+    const { data: pub } = supabase.storage.from("documents").getPublicUrl(filePath);
     const metadata: UploadedFileMetadata = {
       name: file.name,
       path: filePath,
-      publicUrl,
+      publicUrl: pub?.publicUrl ?? "",
       size: processedFile.size,
-      type: processedFile.type,
+      type: processedFile.type || file.type,
       uploadedAt: new Date().toISOString(),
     };
 
     return { data: metadata, error: null };
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err));
-    console.error("Storage upload exception:", error);
+    reportSupabase("uploadDocumentToStorage", error, { level: "error" });
     return { data: null, error };
   }
 }

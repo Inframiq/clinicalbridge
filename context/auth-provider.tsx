@@ -3,14 +3,15 @@
 import * as React from "react";
 import type { UserRole } from "@/types";
 import {
-  currentLocumDoctor,
+  currentLocumTenensDoctor,
   currentWorkingDoctor,
-  currentIntern,
 } from "@/lib/mock-data/doctors";
 import { currentFacility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { reportSupabase } from "@/lib/supabase/log";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 export interface UserProfile {
   id: string;
@@ -43,7 +44,12 @@ interface AuthContextValue extends AuthSession {
     password: string,
     role: UserRole,
     fullName: string
-  ) => Promise<{ error: Error | null; user: User | null; hasSession: boolean }>;
+  ) => Promise<{
+    error: Error | null;
+    user: User | null;
+    hasSession: boolean;
+    isDuplicateEmail?: boolean;
+  }>;
   signInWithOAuth: (provider: "google" | "azure") => Promise<{ error: Error | null }>;
   resendConfirmationEmail: (email: string) => Promise<{ error: Error | null }>;
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
@@ -67,12 +73,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     "lt-auth-session",
     defaultSession
   );
-  const [loading, setLoading] = React.useState<boolean>(true);
+  // Offline mode has no async auth bootstrap, so there is nothing to wait for.
+  const [loading, setLoading] = React.useState<boolean>(isSupabaseConfigured);
 
-  const supabase = React.useMemo(() => createClient(), []);
+  const supabase = React.useMemo<SupabaseClient | null>(
+    () => (isSupabaseConfigured ? createClient() : null),
+    []
+  );
 
   const fetchProfile = React.useCallback(
     async (userId: string, userEmail?: string, userRole?: UserRole, fullName?: string): Promise<UserProfile | null> => {
+      if (!supabase) return null;
       try {
         const { data, error } = await supabase
           .from("profiles")
@@ -85,33 +96,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (error && error.code !== "PGRST116") {
-          console.warn("Profile fetch warning:", error.message);
+          reportSupabase("auth.fetchProfile", error);
         }
 
         // If profile doesn't exist yet, insert a fallback profile record
-        const fallbackRole = userRole || "locum_doctor";
+        const fallbackRole = userRole || "locum_tenens";
         const fallbackEmail = userEmail || "";
         const fallbackName = fullName || fallbackEmail.split("@")[0] || "User";
 
-        const { data: newProfile, error: insertError } = await supabase
+        const { data: newProfile, error: upsertError } = await supabase
           .from("profiles")
-          .insert({
-            id: userId,
-            email: fallbackEmail,
-            role: fallbackRole,
-            full_name: fallbackName,
-            verified: false,
-            completed_onboarding: false,
-            verification_status: "Pending",
-          })
+          .upsert(
+            {
+              id: userId,
+              email: fallbackEmail,
+              role: fallbackRole,
+              full_name: fallbackName,
+              verified: false,
+              completed_onboarding: false,
+              verification_status: "Pending",
+            },
+            { onConflict: "id", ignoreDuplicates: true }
+          )
           .select("*")
-          .single();
+          .maybeSingle();
 
-        if (!insertError && newProfile) {
+        if (!upsertError && newProfile) {
           return newProfile as UserProfile;
         }
       } catch (e) {
-        console.warn("Fetch profile exception:", e);
+        reportSupabase("auth.fetchProfile", e);
       }
       return null;
     },
@@ -120,12 +134,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Listen to Supabase Auth State Changes
   React.useEffect(() => {
+    if (!supabase) return;
+
     async function checkUser() {
+      if (!supabase) return;
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           const profile = await fetchProfile(user.id, user.email, undefined, user.user_metadata?.full_name);
-          const role = profile ? profile.role : (user.user_metadata?.role as UserRole) || "locum_doctor";
+          const role = profile ? profile.role : (user.user_metadata?.role as UserRole) || "locum_tenens";
 
           setSession({
             user,
@@ -136,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } catch (err) {
-        console.warn("Supabase auth check notice:", err);
+        reportSupabase("auth.checkUser", err);
       } finally {
         setLoading(false);
       }
@@ -149,7 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const authUser = authSession?.user;
         if (authUser) {
           const profile = await fetchProfile(authUser.id, authUser.email, authUser.user_metadata?.role, authUser.user_metadata?.full_name);
-          const role = profile ? profile.role : (authUser.user_metadata?.role as UserRole) || "locum_doctor";
+          const role = profile ? profile.role : (authUser.user_metadata?.role as UserRole) || "locum_tenens";
 
           setSession({
             user: authUser,
@@ -170,6 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase, setSession, fetchProfile]);
 
   const refreshProfile = React.useCallback(async () => {
+    if (!supabase) return null;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return null;
     const profile = await fetchProfile(user.id, user.email);
@@ -187,19 +205,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = React.useCallback(
     (role: UserRole) => {
+      if (isSupabaseConfigured) {
+        reportSupabase("auth.login", "mock login ignored (online mode)");
+        return;
+      }
+
       const identityByRole: Record<UserRole, { name: string; title: string }> = {
         hospital: { name: currentFacility.name, title: "Hospital Administrator" },
         working_doctor: {
           name: `Dr. ${currentWorkingDoctor.firstName} ${currentWorkingDoctor.lastName}`,
           title: currentWorkingDoctor.specialty,
         },
-        locum_doctor: {
-          name: `Dr. ${currentLocumDoctor.firstName} ${currentLocumDoctor.lastName}`,
-          title: currentLocumDoctor.specialty,
-        },
-        intern: {
-          name: `Dr. ${currentIntern.firstName} ${currentIntern.lastName}`,
-          title: `Intern — ${currentIntern.specialty}`,
+        locum_tenens: {
+          name: `Dr. ${currentLocumTenensDoctor.firstName} ${currentLocumTenensDoctor.lastName}`,
+          title: currentLocumTenensDoctor.specialty,
         },
         super_admin: { name: "Platform Admin", title: "Super Admin" },
       };
@@ -226,6 +245,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithSupabase = React.useCallback(
     async (email: string, password: string, expectedRole?: UserRole) => {
+      if (!supabase) {
+        return { error: new Error("Supabase is not configured"), profile: null };
+      }
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email,
@@ -252,8 +274,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const roleLabels: Record<UserRole, string> = {
               hospital: "Hospital / Clinic",
               working_doctor: "Working Doctor",
-              locum_doctor: "Locum Doctor",
-              intern: "Intern",
+              locum_tenens: "Locum Tenens",
               super_admin: "Super Admin",
             };
             const expectedLabel = roleLabels[expectedRole] || expectedRole;
@@ -265,7 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             return { error: roleMismatchError, profile: null };
           }
 
-          const role = profile?.role || expectedRole || "locum_doctor";
+          const role = profile?.role || expectedRole || "locum_tenens";
           setSession({
             user: data.user,
             role,
@@ -286,6 +307,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithSupabase = React.useCallback(
     async (email: string, password: string, role: UserRole, fullName: string) => {
+      if (!supabase) {
+        return { error: new Error("Supabase is not configured"), user: null, hasSession: false };
+      }
       try {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -299,12 +323,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
         if (error) {
-          console.error("Supabase Signup Error:", error);
+          const isDuplicateEmail =
+            (error as { code?: string }).code === "user_already_exists" ||
+            (error as { status?: number }).status === 422 ||
+            /already registered|already exists/i.test(error.message);
+
+          // A duplicate-email signup is an expected, user-facing outcome - the form prompts
+          // the visitor to log in instead, so it is not logged at all. Everything else goes
+          // through reportSupabase, the single Supabase log path, which emits one formatted
+          // warning string rather than a raw error object that Next.js would escalate to a
+          // full-screen dev overlay.
+          if (!isDuplicateEmail) {
+            reportSupabase("auth.signUp", error);
+          }
 
           return {
             error,
             user: null,
             hasSession: false,
+            isDuplicateEmail,
           };
         }
         // The database trigger "on_auth_user_created" automatically creates the profile row
@@ -333,6 +370,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithOAuth = React.useCallback(
     async (provider: "google" | "azure") => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
       try {
         const redirectUrl = `${window.location.origin}/login`;
         const { error } = await supabase.auth.signInWithOAuth({
@@ -351,6 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resendConfirmationEmail = React.useCallback(
     async (email: string) => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
       try {
         const { error } = await supabase.auth.resend({ type: "signup", email });
         return { error: error ? new Error(error.message) : null };
@@ -363,6 +402,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPasswordForEmail = React.useCallback(
     async (email: string) => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
       try {
         const redirectUrl = `${window.location.origin}/reset-password`;
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -378,6 +418,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updatePassword = React.useCallback(
     async (password: string) => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
       try {
         const { error } = await supabase.auth.updateUser({ password });
         return { error: error ? new Error(error.message) : null };
@@ -390,7 +431,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = React.useCallback(async () => {
     try {
-      await supabase.auth.signOut();
+      if (supabase) await supabase.auth.signOut();
     } catch {
       // ignore
     }

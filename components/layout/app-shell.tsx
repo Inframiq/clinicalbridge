@@ -7,14 +7,21 @@ import { Topbar } from "@/components/layout/topbar";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { useAuthRole } from "@/context/auth-provider";
-import type { NavItem } from "@/lib/nav-config";
+import type { UserProfile } from "@/context/auth-provider";
+import { navItemsByRole } from "@/lib/nav-config";
 import { ROLE_HOME } from "@/lib/roles";
 import type { UserRole } from "@/types";
 
 interface AppShellProps {
-  navItems: NavItem[];
   rootLabel: string;
   requiredRole: UserRole;
+  /**
+   * Profile resolved on the server by the role layout. When present and
+   * matching `requiredRole`, the session is already verified server-side, so
+   * the client gate below can render `children` on the very first pass —
+   * no blank-shell flash, no redirect. Null in offline/unconfigured mode.
+   */
+  initialProfile?: UserProfile | null;
   children: React.ReactNode;
 }
 
@@ -24,10 +31,20 @@ interface AppShellProps {
 // dead-code-eliminated from production bundles — never ships live.
 const DEV_BYPASS = process.env.NODE_ENV !== "production";
 
-export function AppShell({ navItems, rootLabel, requiredRole, children }: AppShellProps) {
+export function AppShell({
+  rootLabel,
+  requiredRole,
+  initialProfile,
+  children,
+}: AppShellProps) {
   const router = useRouter();
   const { role, login } = useAuthRole();
   const [collapsed, setCollapsed] = useLocalStorageState("lt-sidebar-collapsed", false);
+
+  // `NavItem.icon` is a lucide component reference and can't cross the
+  // RSC → Client boundary, so the async server layouts pass `requiredRole`
+  // (a string) instead of a nav array and we resolve it here on the client.
+  const navItems = navItemsByRole[requiredRole];
 
   // `role` is backed by localStorage via useSyncExternalStore, which renders
   // the SSR-safe null snapshot on the very first client pass before
@@ -38,7 +55,7 @@ export function AppShell({ navItems, rootLabel, requiredRole, children }: AppShe
 
   useEffect(() => {
     if (!mounted) return;
-    if (role === requiredRole) return;
+    if (role === requiredRole || initialProfile?.role === requiredRole) return;
 
     if (DEV_BYPASS) {
       // Auto sign-in as whichever role the current section needs, instead of
@@ -53,9 +70,12 @@ export function AppShell({ navItems, rootLabel, requiredRole, children }: AppShe
     } else {
       router.replace("/login");
     }
-  }, [mounted, role, requiredRole, router, login]);
+  }, [mounted, role, requiredRole, router, login, initialProfile]);
 
-  if (!mounted || role !== requiredRole) {
+  // `initialProfile` is a plain prop with the same value on the server render
+  // and the client's first pass, so short-circuiting on it keeps hydration
+  // identical while skipping the blank shell for a server-verified session.
+  if (initialProfile?.role !== requiredRole && (!mounted || role !== requiredRole)) {
     return <div className="flex h-dvh items-center justify-center bg-background" />;
   }
 
@@ -65,7 +85,7 @@ export function AppShell({ navItems, rootLabel, requiredRole, children }: AppShe
         <Sidebar navItems={navItems} collapsed={collapsed} onCollapsedChange={setCollapsed} />
       </div>
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar navItems={navItems} rootLabel={rootLabel} />
+        <Topbar navItems={navItems} rootLabel={rootLabel} initialProfile={initialProfile} />
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
             {children}

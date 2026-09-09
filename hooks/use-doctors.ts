@@ -8,15 +8,23 @@ export function useDoctors() {
     registerDoctor,
     registerSelfDoctor,
     updateDoctorVerification,
+    reviewDoctorDocument,
+    markDoctorDocumentViewed,
     updateDoctorProfile,
     assignDoctorToShift,
+    approveDoctorRegistration,
+    rejectDoctorRegistration,
   } = useAppData();
   return {
     doctors,
     registerDoctor,
     registerSelfDoctor,
     updateDoctorVerification,
+    reviewDoctorDocument,
+    markDoctorDocumentViewed,
     updateDoctorProfile,
     assignDoctorToShift,
+    approveDoctorRegistration,
+    rejectDoctorRegistration,
   };
 }

@@ -1,18 +1,9 @@
 import type { HospitalVerification } from "@/types";
 
-export interface Facility {
-  id: string;
-  name: string;
-  city: string;
-  registrationNumber: string;
-  governmentLicense: string;
-  hospitalType: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  verification: HospitalVerification;
-  status: "pending" | "verified";
-}
+// The Facility shape now lives with the Supabase read service (its mapper is the
+// source of truth). Re-exported here so existing importers keep working.
+export type { Facility } from "@/lib/supabase/services/facilities";
+import type { Facility } from "@/lib/supabase/services/facilities";
 
 const FULLY_VERIFIED: HospitalVerification = {
   governmentRegistration: true,

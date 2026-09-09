@@ -56,18 +56,23 @@ export function RateHospitalDialog({
   );
   const [comment, setComment] = useState("");
 
-  function onSubmit() {
+  async function onSubmit() {
     const overallScore =
       Object.values(scores).reduce((sum, v) => sum + v, 0) / Object.values(scores).length;
-    submitRating({
-      shiftId: shift.id,
-      direction: "doctor_to_hospital",
-      doctorId,
-      facilityId: shift.facilityId,
-      categories: scores,
-      overallScore: Math.round(overallScore * 10) / 10,
-      comment: comment || undefined,
-    });
+    try {
+      await submitRating({
+        shiftId: shift.id,
+        direction: "doctor_to_hospital",
+        doctorId,
+        facilityId: shift.facilityId,
+        categories: scores,
+        overallScore: Math.round(overallScore * 10) / 10,
+        comment: comment || undefined,
+      });
+    } catch {
+      // AppDataProvider already rolled back and showed an error toast
+      return;
+    }
     toast.success(`Rated ${shift.facilityName}`);
     setOpen(false);
   }

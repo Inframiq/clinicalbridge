@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Users, CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
+import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -46,7 +46,7 @@ export default function SuperAdminDoctorsPage() {
         accessorFn: (row) => row.doctorKind ?? "—",
         cell: ({ row }) => {
           const kind = row.original.doctorKind;
-          const label = kind === "working" ? "Working Doctor" : kind === "locum" ? "Locum Doctor" : kind === "intern" ? "Intern" : "—";
+          const label = kind === "working" ? "Working Doctor" : kind === "locum_tenens" ? "Locum Tenens" : "—";
           return label;
         },
       },
@@ -61,27 +61,27 @@ export default function SuperAdminDoctorsPage() {
       },
       {
         id: "verification",
-        header: "Verification",
+        header: "Documents",
         accessorFn: (row) =>
-          Object.values(
-            row.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false }
-          ).filter(Boolean).length,
+          Object.values(row.uploadedDocuments ?? {}).filter((f) => f.status === "approved").length,
         cell: ({ row }) => {
-          const v =
-            row.original.verification ??
-            { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
-          const passed = Object.values(v).filter(Boolean).length;
+          const docs = Object.values(row.original.uploadedDocuments ?? {});
+          const total = docs.length;
+          const approved = docs.filter((f) => f.status === "approved").length;
+          const anyRejected = docs.some((f) => f.status === "rejected");
           return (
             <VerifyDoctorDialog
               doctor={row.original}
               trigger={
                 <Button variant="outline" size="sm">
-                  {passed === 4 ? (
+                  {anyRejected ? (
+                    <ShieldX className="size-3.5 text-destructive" />
+                  ) : total > 0 && approved === total ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
                     <ShieldAlert className="size-3.5 text-warning-foreground" />
                   )}
-                  {passed}/4 checks
+                  {approved}/{total} docs
                 </Button>
               }
             />
@@ -105,7 +105,7 @@ export default function SuperAdminDoctorsPage() {
     <div>
       <PageHeader
         title="Doctor Verification"
-        description="Platform-wide credential verification across every hospital, locum doctor, and intern."
+        description="Platform-wide credential verification across every hospital and locum tenens doctor."
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
