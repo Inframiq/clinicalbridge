@@ -2,7 +2,7 @@ import { Radio, Sparkles, CalendarCheck, Search, FileCheck2, Wallet } from "luci
 
 const hospitalSteps = [
   { icon: Radio, title: "Broadcast a shift", description: "Post open shifts with pay, location, and requirements in seconds." },
-  { icon: Sparkles, title: "Get smart matches", description: "Our AI ranks the best-fit, available doctors nearby instantly." },
+  { icon: Sparkles, title: "Get smart matches", description: "The platform ranks the best-fit, available doctors nearby instantly." },
   { icon: CalendarCheck, title: "Confirm & track", description: "Approve a match and monitor the shift live from check-in to sign-off." },
 ];
 

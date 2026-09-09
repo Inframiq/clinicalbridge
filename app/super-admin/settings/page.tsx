@@ -38,21 +38,21 @@ export default function SuperAdminSettingsPage() {
             <CardDescription>Core platform identity — configured at the operator level.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Platform Name</span>
-              <span className="font-medium text-foreground">{PLATFORM.name}</span>
+            <div className="flex items-center justify-between gap-4">
+              <span className="shrink-0 text-muted-foreground">Platform Name</span>
+              <span className="min-w-0 truncate font-medium text-foreground">{PLATFORM.name}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Mail className="size-3.5" /> Support Email
+            <div className="flex items-center justify-between gap-4">
+              <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                <Mail className="size-3.5 shrink-0" /> Support Email
               </span>
-              <span className="font-medium text-foreground">{PLATFORM.supportEmail}</span>
+              <span className="min-w-0 truncate font-medium text-foreground">{PLATFORM.supportEmail}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Phone className="size-3.5" /> Support Phone
+            <div className="flex items-center justify-between gap-4">
+              <span className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                <Phone className="size-3.5 shrink-0" /> Support Phone
               </span>
-              <span className="font-medium text-foreground">{PLATFORM.supportPhone}</span>
+              <span className="min-w-0 truncate font-medium text-foreground">{PLATFORM.supportPhone}</span>
             </div>
           </CardContent>
         </Card>
@@ -66,11 +66,12 @@ export default function SuperAdminSettingsPage() {
             <div className="divide-y divide-border">
               {notificationPrefs.map((pref) => (
                 <div key={pref.id} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">{pref.label}</p>
                     <p className="text-sm text-muted-foreground">{pref.description}</p>
                   </div>
                   <Switch
+                    className="shrink-0"
                     checked={prefs[pref.id]}
                     onCheckedChange={(checked) => setPrefs((p) => ({ ...p, [pref.id]: checked }))}
                   />

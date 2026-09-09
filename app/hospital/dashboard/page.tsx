@@ -110,7 +110,7 @@ export default function AdminDashboardPage() {
         </ChartCard>
 
         <ChartCard
-          title="AI Smart Matches (Top Picks)"
+          title="Smart Matches (Top Picks)"
           description="Based on specialty, location & availability"
           viewAllHref="/hospital/smart-matches"
         >

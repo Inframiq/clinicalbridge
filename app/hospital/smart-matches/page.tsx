@@ -25,7 +25,7 @@ export default function SmartMatchesPage() {
     <div>
       <PageHeader
         title="Smart Matches"
-        description="AI-ranked doctor recommendations for your open shifts."
+        description="Ranked doctor recommendations for your open shifts."
       />
 
       {openShifts.length === 0 ? (

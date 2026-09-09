@@ -34,7 +34,7 @@ export default function RatingsPage() {
         header: "Doctor",
         accessorFn: (row) => `${row.firstName} ${row.lastName}`,
         cell: ({ row }) => (
-          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} />
+          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} className="max-w-[220px]" />
         ),
       },
       {

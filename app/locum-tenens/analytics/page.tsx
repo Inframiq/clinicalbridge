@@ -124,7 +124,7 @@ export default function DoctorAnalyticsPage() {
       />
 
       <Tabs defaultValue="overview">
-        <TabsList className="flex-wrap">
+        <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="shifts">Shifts</TabsTrigger>
           <TabsTrigger value="earnings">Earnings</TabsTrigger>

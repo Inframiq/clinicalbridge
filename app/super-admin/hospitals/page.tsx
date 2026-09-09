@@ -30,9 +30,11 @@ export default function SuperAdminHospitalsPage() {
         header: "Hospital",
         accessorFn: (row) => row.name,
         cell: ({ row }) => (
-          <div>
-            <p className="font-medium text-foreground">{row.original.name}</p>
-            <p className="text-xs text-muted-foreground">{row.original.city}</p>
+          <div className="max-w-[220px]">
+            <p className="truncate font-medium text-foreground" title={row.original.name}>
+              {row.original.name}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">{row.original.city}</p>
           </div>
         ),
       },
@@ -42,9 +44,11 @@ export default function SuperAdminHospitalsPage() {
         id: "contact",
         header: "Contact",
         cell: ({ row }) => (
-          <div>
-            <p className="text-foreground">{row.original.contactPerson}</p>
-            <p className="text-xs text-muted-foreground">{row.original.email}</p>
+          <div className="max-w-[200px]">
+            <p className="truncate text-foreground">{row.original.contactPerson}</p>
+            <p className="truncate text-xs text-muted-foreground" title={row.original.email}>
+              {row.original.email}
+            </p>
           </div>
         ),
       },

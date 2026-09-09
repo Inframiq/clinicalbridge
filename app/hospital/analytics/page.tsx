@@ -73,7 +73,7 @@ export default function AdminAnalyticsPage() {
         header: "Doctor",
         accessorFn: (row) => `${row.firstName} ${row.lastName}`,
         cell: ({ row }) => (
-          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} size="sm" />
+          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} size="sm" className="max-w-[220px]" />
         ),
       },
       { accessorKey: "rating", header: "Rating" },

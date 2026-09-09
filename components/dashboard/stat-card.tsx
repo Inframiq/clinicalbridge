@@ -35,7 +35,7 @@ export function StatCard({
       <CardContent className="flex items-start justify-between gap-3 px-5">
         <div className="min-w-0">
           <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="mt-1.5 text-2xl font-semibold tracking-tight text-foreground">
+          <p className="mt-1.5 text-2xl font-semibold leading-tight tracking-tight text-foreground break-words">
             {value}
           </p>
           {(delta || helpText) && (

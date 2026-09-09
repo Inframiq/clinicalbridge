@@ -80,7 +80,7 @@ export default function SuperAdminAnalyticsPage() {
         header: "Doctor",
         accessorFn: (row) => `${row.firstName} ${row.lastName}`,
         cell: ({ row }) => (
-          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} size="sm" />
+          <Person name={`Dr. ${row.original.firstName} ${row.original.lastName}`} subtitle={row.original.specialty} size="sm" className="max-w-[220px]" />
         ),
       },
       { accessorKey: "rating", header: "Rating" },
@@ -125,7 +125,7 @@ export default function SuperAdminAnalyticsPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="hospitals">Hospitals</TabsTrigger>
           <TabsTrigger value="doctors">Doctors</TabsTrigger>
-          <TabsTrigger value="requests">Replacement Requests</TabsTrigger>
+          <TabsTrigger value="requests">Requests</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6">

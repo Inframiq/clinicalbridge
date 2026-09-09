@@ -5,7 +5,7 @@ import { IMAGES } from "@/lib/config/images";
 const features = [
   {
     icon: Sparkles,
-    title: "AI Smart Matching",
+    title: "Smart Matching",
     description: "Ranks available doctors by specialty, distance, and rating in real time.",
   },
   {

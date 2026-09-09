@@ -111,7 +111,7 @@ export default function SuperAdminDashboardPage() {
       <div className="mt-6">
         <ChartCard title="Platform Health" description="High-level trust & safety signal">
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <ShieldCheck className="size-5 text-success" />
+            <ShieldCheck className="size-5 shrink-0 text-success" />
             No active disputes or flagged accounts.
           </div>
         </ChartCard>

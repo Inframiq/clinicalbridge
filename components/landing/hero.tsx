@@ -11,7 +11,7 @@ export function Hero() {
         <div>
           <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
             <Sparkles className="size-3.5 text-brand" />
-            AI-powered shift matching for modern healthcare teams
+            Real-time shift matching for modern healthcare teams
           </div>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight text-balance text-foreground sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]">
             Connecting Care. <span className="text-brand">When It Matters.</span>

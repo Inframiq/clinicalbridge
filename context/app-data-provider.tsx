@@ -977,27 +977,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
 
   const approveReplacementRequest = React.useCallback(
     async (id: string) => {
-      let shiftTitle = "the shift";
-      let shiftId: string | null = null;
+      // Resolve the request and its shift up front from current state, so the
+      // notification copy and the Supabase write both get the real shift —
+      // never a value that depends on when React happens to run an updater.
+      const request = replacementRequests.find((r) => r.id === id);
+      const targetShift = request
+        ? shifts.find((s) => s.id === request.shiftId) ?? null
+        : null;
+      const shiftTitle = targetShift?.title ?? "The shift";
+      const targetShiftId: string | null = targetShift?.id ?? null;
+
       let prevRequests: ReplacementRequest[] = [];
       let prevShifts: Shift[] = [];
       let prevNotifications: AppNotification[] = [];
       setReplacementRequests((prev) => {
         prevRequests = prev;
-        return prev.map((r) => {
-          if (r.id !== id) return r;
-          return { ...r, status: "approved", reviewedAt: new Date().toISOString() };
-        });
+        return prev.map((r) =>
+          r.id === id
+            ? { ...r, status: "approved", reviewedAt: new Date().toISOString() }
+            : r
+        );
       });
       setShifts((prev) => {
         prevShifts = prev;
-        return prev.map((s) => {
-          const request = replacementRequests.find((r) => r.id === id);
-          if (!request || s.id !== request.shiftId) return s;
-          shiftTitle = s.title;
-          shiftId = s.id;
-          return { ...s, status: "open", assignedDoctorId: undefined };
-        });
+        return prev.map((s) =>
+          targetShiftId && s.id === targetShiftId
+            ? { ...s, status: "open", assignedDoctorId: undefined }
+            : s
+        );
       });
       setNotifications((prev) => {
         prevNotifications = prev;
@@ -1015,7 +1022,6 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       // Two writes, one rollback: the request status and the shift's re-opened
       // assignment must land together, so either error reverts both slices.
-      const targetShiftId: string | null = shiftId;
       const [statusResult, assignmentResult] = await Promise.all([
         updateReplacementRequestStatusInSupabase(id, "approved"),
         targetShiftId
@@ -1033,7 +1039,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         toast.error(`Couldn't approve replacement request: ${error}`);
       }
     },
-    [setReplacementRequests, setShifts, setNotifications, replacementRequests]
+    [setReplacementRequests, setShifts, setNotifications, replacementRequests, shifts]
   );
 
   const modifyReplacementRequest = React.useCallback(

@@ -37,6 +37,7 @@ export default function SuperAdminDoctorsPage() {
             name={`Dr. ${row.original.firstName} ${row.original.lastName}`}
             subtitle={row.original.specialty}
             size="sm"
+            className="max-w-[220px]"
           />
         ),
       },

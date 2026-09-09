@@ -168,24 +168,24 @@ export default function DepartmentsPage() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="flex items-center gap-2">
-                    <Users className="size-4 text-muted-foreground" />
+                    <Users className="size-4 shrink-0 text-muted-foreground" />
                     <span className="font-medium text-foreground">{stat.total}</span>
-                    <span className="text-muted-foreground">Doctors</span>
+                    <span className="truncate text-muted-foreground">Doctors</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <UserCheck className="size-4 text-success" />
+                    <UserCheck className="size-4 shrink-0 text-success" />
                     <span className="font-medium text-foreground">{stat.available}</span>
-                    <span className="text-muted-foreground">Available</span>
+                    <span className="truncate text-muted-foreground">Available</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <UserMinus className="size-4 text-muted-foreground" />
+                    <UserMinus className="size-4 shrink-0 text-muted-foreground" />
                     <span className="font-medium text-foreground">{stat.onLeave}</span>
-                    <span className="text-muted-foreground">On Leave</span>
+                    <span className="truncate text-muted-foreground">On Leave</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <DoorOpen className="size-4 text-warning-foreground" />
+                    <DoorOpen className="size-4 shrink-0 text-warning-foreground" />
                     <span className="font-medium text-foreground">{stat.vacant}</span>
-                    <span className="text-muted-foreground">Vacant</span>
+                    <span className="truncate text-muted-foreground">Vacant</span>
                   </div>
                   <div className="col-span-2 flex items-center gap-2">
                     <CalendarDays className="size-4 text-info" />

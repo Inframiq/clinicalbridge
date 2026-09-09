@@ -30,6 +30,7 @@ import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supaba
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
+import { SPECIALTIES } from "@/lib/specialties";
 
 const MIN_DOB = isoDateYearsAgo(120);
 const MAX_DOB = todayIsoDate();
@@ -386,13 +387,11 @@ export function WorkingDoctorOnboardingWizard() {
                                 <SelectValue placeholder="Select specialty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {["Emergency Medicine", "Internal Medicine", "Pediatrics", "Orthopedics", "Critical Care"].map(
-                                  (s) => (
-                                    <SelectItem key={s} value={s}>
-                                      {s}
-                                    </SelectItem>
-                                  )
-                                )}
+                                {SPECIALTIES.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {s}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           )}
@@ -456,17 +455,21 @@ export function WorkingDoctorOnboardingWizard() {
                     return (
                       <div
                         key={doc.key}
-                        className="flex items-center justify-between rounded-lg border border-border p-3"
+                        className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
                       >
-                        <span className="flex items-center gap-2 text-sm">
-                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
+                        <span className="flex shrink-0 items-center gap-2 text-sm">
+                          <FileText className="size-4 shrink-0 text-muted-foreground" /> {doc.label}
                         </span>
                         {isUploaded ? (
-                          <span className="flex items-center gap-1 text-xs font-medium text-success">
-                            <CheckCircle2 className="size-3.5" /> {uploadedFiles[doc.key].name}
+                          <span
+                            title={uploadedFiles[doc.key].name}
+                            className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs font-medium text-success"
+                          >
+                            <CheckCircle2 className="size-3.5 shrink-0" />
+                            <span className="truncate">{uploadedFiles[doc.key].name}</span>
                           </span>
                         ) : (
-                          <label className="cursor-pointer">
+                          <label className="shrink-0 cursor-pointer">
                             <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
                               <span>
                                 {isUploading ? (
@@ -578,12 +581,14 @@ export function WorkingDoctorOnboardingWizard() {
               <p className="mb-3 text-sm font-medium text-foreground">Document Checklist</p>
               <ul className="space-y-2">
                 {documentChecklist.map((doc) => (
-                  <li key={doc.key} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{doc.label}</span>
+                  <li key={doc.key} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate text-muted-foreground" title={doc.label}>
+                      {doc.label}
+                    </span>
                     {uploadedFiles[doc.key] ? (
-                      <span className="text-xs font-medium text-success">Uploaded</span>
+                      <span className="shrink-0 text-xs font-medium text-success">Uploaded</span>
                     ) : (
-                      <span className="text-xs font-medium text-destructive">Not Uploaded</span>
+                      <span className="shrink-0 text-xs font-medium text-destructive">Not uploaded</span>
                     )}
                   </li>
                 ))}
