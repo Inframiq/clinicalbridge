@@ -24,7 +24,11 @@ export default function SuperAdminDoctorsPage() {
 
   const totalActive = doctors.filter((d) => d.status === "active").length;
   const totalOnboarding = doctors.filter((d) => d.status === "onboarding").length;
-  const pendingVerification = doctors.filter((d) => !d.verified).length;
+  // A rejected doctor never flips `verified` to true — exclude it explicitly
+  // so a closed application doesn't inflate the pending count.
+  const pendingVerification = doctors.filter(
+    (d) => !d.verified && d.registrationStatus !== "Rejected"
+  ).length;
 
   const columns: ColumnDef<Doctor>[] = useMemo(
     () => [

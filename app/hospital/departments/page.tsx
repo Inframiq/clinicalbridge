@@ -13,7 +13,6 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
 
 export default function DepartmentsPage() {
   const { doctors } = useDoctors();
@@ -22,9 +21,7 @@ export default function DepartmentsPage() {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const [newName, setNewName] = useState("");

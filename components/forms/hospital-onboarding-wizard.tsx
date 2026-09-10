@@ -6,7 +6,7 @@ import { Controller, useForm, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, Upload, Loader2 } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, ShieldX, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -67,6 +67,16 @@ const documentChecklist = [
   { key: "authorizedSignatory", label: "Authorized Signatory Proof" },
 ];
 
+// A document that was rejected in a previous review round still has a file
+// object (so the checklist "uploaded" check alone can't catch it) — it must
+// be replaced before the application counts as ready to resubmit.
+function allDocumentsResolved(files: Record<string, UploadedFileMetadata>) {
+  return (
+    Object.keys(files).length === documentChecklist.length &&
+    Object.values(files).every((f) => f.status !== "rejected")
+  );
+}
+
 const initialDefaults: FormValues = {
   name: "",
   registrationNumber: "",
@@ -82,7 +92,7 @@ const initialDefaults: FormValues = {
 
 export function HospitalOnboardingWizard() {
   const router = useRouter();
-  const { login, refreshProfile, profile } = useAuthRole();
+  const { refreshProfile, profile } = useAuthRole();
   const { facilities, registerHospital } = useFacilities();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
@@ -132,11 +142,9 @@ export function HospitalOnboardingWizard() {
     const existing = facilities.find((f) => f.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
       setUploadedFiles(existing.uploadedDocuments);
-      setValue(
-        "documentsComplete",
-        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
-        { shouldValidate: false }
-      );
+      setValue("documentsComplete", allDocumentsResolved(existing.uploadedDocuments), {
+        shouldValidate: false,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHydrated, profile?.id]);
@@ -157,9 +165,7 @@ export function HospitalOnboardingWizard() {
 
     setUploadedFiles((prev) => {
       const next = { ...prev, [key]: metadata };
-      setValue("documentsComplete", Object.keys(next).length === documentChecklist.length, {
-        shouldValidate: false,
-      });
+      setValue("documentsComplete", allDocumentsResolved(next), { shouldValidate: false });
       return next;
     });
     toast.success(`${file.name} uploaded successfully!`);
@@ -260,7 +266,6 @@ export function HospitalOnboardingWizard() {
         }
 
         clearDraft();
-        login("hospital");
         toast.success("Registration submitted! Your hospital is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -377,8 +382,20 @@ export function HospitalOnboardingWizard() {
                     Upload the required documents to Supabase Storage (PDF, JPG, PNG — max 10MB).
                   </p>
                   {documentChecklist.map((doc) => {
-                    const isUploaded = !!uploadedFiles[doc.key];
+                    const uploaded = uploadedFiles[doc.key];
+                    const isRejected = uploaded?.status === "rejected";
                     const isUploading = uploadingKey === doc.key;
+                    const pickerInput = (
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileUpload(doc.key, file);
+                        }}
+                      />
+                    );
                     return (
                       <div
                         key={doc.key}
@@ -387,9 +404,28 @@ export function HospitalOnboardingWizard() {
                         <span className="flex items-center gap-2 text-sm">
                           <FileText className="size-4 text-muted-foreground" /> {doc.label}
                         </span>
-                        {isUploaded ? (
+                        {isRejected ? (
+                          <div className="flex items-center gap-2">
+                            <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+                              <ShieldX className="size-3.5" /> Rejected — re-upload
+                            </span>
+                            <label className="cursor-pointer">
+                              <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                <span>
+                                  {isUploading ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <Upload className="size-3.5" />
+                                  )}
+                                  Replace
+                                </span>
+                              </Button>
+                              {pickerInput}
+                            </label>
+                          </div>
+                        ) : uploaded ? (
                           <span className="flex items-center gap-1 text-xs font-medium text-success">
-                            <CheckCircle2 className="size-3.5" /> {uploadedFiles[doc.key].name}
+                            <CheckCircle2 className="size-3.5" /> {uploaded.name}
                           </span>
                         ) : (
                           <label className="cursor-pointer">
@@ -403,15 +439,7 @@ export function HospitalOnboardingWizard() {
                                 Upload
                               </span>
                             </Button>
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleFileUpload(doc.key, file);
-                              }}
-                            />
+                            {pickerInput}
                           </label>
                         )}
                       </div>
@@ -501,16 +529,22 @@ export function HospitalOnboardingWizard() {
             <CardContent>
               <p className="mb-3 text-sm font-medium text-foreground">Document Checklist</p>
               <ul className="space-y-2">
-                {documentChecklist.map((doc) => (
-                  <li key={doc.key} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{doc.label}</span>
-                    {uploadedFiles[doc.key] ? (
-                      <span className="text-xs font-medium text-success">Uploaded</span>
-                    ) : (
-                      <span className="text-xs font-medium text-destructive">Not Uploaded</span>
-                    )}
-                  </li>
-                ))}
+                {documentChecklist.map((doc) => {
+                  const uploaded = uploadedFiles[doc.key];
+                  const isRejected = uploaded?.status === "rejected";
+                  return (
+                    <li key={doc.key} className="flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{doc.label}</span>
+                      {isRejected ? (
+                        <span className="text-xs font-medium text-destructive">Rejected</span>
+                      ) : uploaded ? (
+                        <span className="text-xs font-medium text-success">Uploaded</span>
+                      ) : (
+                        <span className="text-xs font-medium text-destructive">Not Uploaded</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

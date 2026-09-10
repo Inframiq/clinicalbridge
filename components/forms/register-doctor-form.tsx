@@ -19,7 +19,6 @@ import { useDoctors } from "@/hooks/use-doctors";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
 
 const experienceOptions = ["0-2 Years", "2-4 Years", "4-6 Years", "6-8 Years", "8-10 Years", "10+ Years"];
 
@@ -42,9 +41,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {

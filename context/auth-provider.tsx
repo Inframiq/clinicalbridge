@@ -2,11 +2,6 @@
 
 import * as React from "react";
 import type { UserRole } from "@/types";
-import {
-  currentLocumTenensDoctor,
-  currentWorkingDoctor,
-} from "@/lib/mock-data/doctors";
-import { currentFacility } from "@/lib/mock-data/organizations";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -32,7 +27,6 @@ interface AuthSession {
 }
 
 interface AuthContextValue extends AuthSession {
-  login: (role: UserRole) => void;
   logout: () => Promise<void>;
   signInWithSupabase: (
     email: string,
@@ -202,46 +196,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return profile;
   }, [supabase, fetchProfile, setSession]);
-
-  const login = React.useCallback(
-    (role: UserRole) => {
-      if (isSupabaseConfigured) {
-        reportSupabase("auth.login", "mock login ignored (online mode)");
-        return;
-      }
-
-      const identityByRole: Record<UserRole, { name: string; title: string }> = {
-        hospital: { name: currentFacility.name, title: "Hospital Administrator" },
-        working_doctor: {
-          name: `Dr. ${currentWorkingDoctor.firstName} ${currentWorkingDoctor.lastName}`,
-          title: currentWorkingDoctor.specialty,
-        },
-        locum_tenens: {
-          name: `Dr. ${currentLocumTenensDoctor.firstName} ${currentLocumTenensDoctor.lastName}`,
-          title: currentLocumTenensDoctor.specialty,
-        },
-        super_admin: { name: "Platform Admin", title: "Super Admin" },
-      };
-
-      const mockProfile: UserProfile = {
-        id: "mock-user-id",
-        email: `${role}@clinicalbridge.com`,
-        role,
-        full_name: identityByRole[role].name,
-        verified: true,
-        completed_onboarding: true,
-        verification_status: "Approved",
-      };
-
-      setSession({
-        role,
-        user: null,
-        profile: mockProfile,
-        ...identityByRole[role],
-      });
-    },
-    [setSession]
-  );
 
   const signInWithSupabase = React.useCallback(
     async (email: string, password: string, expectedRole?: UserRole) => {
@@ -441,7 +395,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = React.useMemo(
     () => ({
       ...session,
-      login,
       logout,
       signInWithSupabase,
       signUpWithSupabase,
@@ -454,7 +407,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       session,
-      login,
       logout,
       signInWithSupabase,
       signUpWithSupabase,

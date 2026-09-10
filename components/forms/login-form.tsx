@@ -75,7 +75,7 @@ const roleOnboardingPaths: Record<UserRole, string> = {
 
 export function LoginForm() {
   const router = useRouter();
-  const { login, signInWithSupabase, signInWithOAuth } = useAuthRole();
+  const { signInWithSupabase, signInWithOAuth } = useAuthRole();
   const [role, setRole] = useState<UserRole>("hospital");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -118,28 +118,23 @@ export function LoginForm() {
   }
 
   async function onSubmit(data: FormValues) {
-    if (data.email && data.password) {
-      const { error, profile } = await signInWithSupabase(data.email, data.password, role);
-      
-      if (error) {
-        toast.error(error.message || "Failed to sign in with Supabase Auth");
-        return;
-      }
+    const { error, profile } = await signInWithSupabase(data.email, data.password, role);
 
-      if (profile) {
-        routeBasedOnStatus(
-          profile.role,
-          profile.completed_onboarding ?? false,
-          profile.verification_status || "Pending"
-        );
-        return;
-      }
+    if (error) {
+      toast.error(error.message || "Failed to sign in");
+      return;
     }
 
-    // Fallback demo mode login
-    login(role);
-    toast.success("Signed in (demo mode)");
-    router.push(ROLE_HOME[role]);
+    if (!profile) {
+      toast.error("Sign-in succeeded but no profile was found. Please contact support.");
+      return;
+    }
+
+    routeBasedOnStatus(
+      profile.role,
+      profile.completed_onboarding ?? false,
+      profile.verification_status || "Pending"
+    );
   }
 
   async function handleOAuth(provider: "google" | "azure") {

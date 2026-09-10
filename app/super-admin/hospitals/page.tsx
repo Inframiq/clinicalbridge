@@ -21,7 +21,11 @@ export default function SuperAdminHospitalsPage() {
   const { facilities } = useFacilities();
 
   const verified = facilities.filter((f) => f.status === "verified").length;
-  const pending = facilities.filter((f) => f.status === "pending").length;
+  // A rejected hospital never flips `status` away from "pending" — exclude it
+  // explicitly so a closed application doesn't inflate the pending count.
+  const pending = facilities.filter(
+    (f) => f.status === "pending" && f.registrationStatus !== "Rejected"
+  ).length;
 
   const columns: ColumnDef<Facility>[] = useMemo(
     () => [

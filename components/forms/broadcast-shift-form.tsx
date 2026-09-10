@@ -22,7 +22,6 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
 import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
 import { formatCurrency, to12Hour } from "@/lib/format";
 import type { ExperienceLevel, ShiftType } from "@/types";
@@ -72,12 +71,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  // Prefer the signed-in hospital's own facility (real accounts); fall back to
-  // the demo "City Medical Center" facility when there's no match (offline
-  // mode, or a super admin/other role previewing this form).
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {
@@ -126,15 +120,17 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const estimatedTotal = hours * (hourlyRate || 0) * (doctorsNeeded || 0);
 
   async function onSubmit(values: FormValues) {
+    if (!myFacility) {
+      toast.error("Couldn't find your hospital's facility record. Please contact support.");
+      return;
+    }
     try {
       await broadcastShift({
         title: values.department.replace(" Department", "").replace(" Unit", ""),
         department: values.department,
-        facilityId: myFacility?.id ?? CITY_MEDICAL.facilityId,
-        facilityName: myFacility?.name ?? CITY_MEDICAL.facilityName,
-        location: myFacility
-          ? { address: myFacility.name, city: myFacility.city, state: "", lat: 0, lng: 0 }
-          : CITY_MEDICAL.location,
+        facilityId: myFacility.id,
+        facilityName: myFacility.name,
+        location: { address: myFacility.name, city: myFacility.city, state: "", lat: 0, lng: 0 },
         date: values.date,
         startTime: to12Hour(values.startTime),
         endTime: to12Hour(values.endTime),

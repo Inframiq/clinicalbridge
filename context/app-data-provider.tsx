@@ -17,17 +17,7 @@ import type {
   Department,
   AttendanceRecord,
 } from "@/types";
-import {
-  shifts as seedShifts,
-  applications as seedApplications,
-  postShiftRecords as seedPayments,
-  notifications as seedNotifications,
-  doctors as seedDoctors,
-  replacementRequests as seedReplacementRequests,
-  ratings as seedRatings,
-} from "@/lib/mock-data";
-import { facilities as seedFacilities, type Facility } from "@/lib/mock-data/organizations";
-import { DEPARTMENTS as seedDepartmentNames } from "@/lib/mock-data/departments";
+import type { Facility } from "@/lib/supabase/services/facilities";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useAuthRole } from "@/context/auth-provider";
 import {
@@ -81,7 +71,6 @@ import {
   verifyAttendanceInSupabase,
 } from "@/lib/supabase/services/attendance";
 import { reportSupabase } from "@/lib/supabase/log";
-import { OfflineModeBanner } from "@/components/layout/offline-mode-banner";
 
 export type NewShiftInput = Pick<
   Shift,
@@ -242,63 +231,25 @@ interface AppDataContextValue {
 const AppDataContext = React.createContext<AppDataContextValue | null>(null);
 
 /**
- * Fallback facility identity for offline/demo mode, where there's no real
- * signed-in hospital account to read a facility from. Exported so callers
- * (e.g. BroadcastShiftForm) can fall back to it when `useFacilities()` has no
- * row for the current profile yet — online, every real broadcast must carry
- * the caller's own facility identity instead of this constant.
+ * Every slice starts empty so the first paint shows no rows; the sync effect
+ * below fills them from Supabase. Defined at module scope so each `seed.*` is
+ * a stable reference: `useLocalStorageState`'s `setValue` depends on
+ * `initialValue`, and a fresh `[]` per render would churn the setter identity
+ * and re-fire the effects below every render.
  */
-export const CITY_MEDICAL = {
-  facilityName: "City Medical Center",
-  facilityId: "fac-city-medical",
-  location: {
-    address: "123 Health St",
-    city: "New York",
-    state: "NY",
-    lat: 40.7608,
-    lng: -73.9918,
-  },
+const seed = {
+  shifts: [] as Shift[],
+  applications: [] as Application[],
+  payments: [] as PostShiftRecord[],
+  notifications: [] as AppNotification[],
+  doctors: [] as Doctor[],
+  replacementRequests: [] as ReplacementRequest[],
+  savedShifts: [] as SavedShift[],
+  ratings: [] as Rating[],
+  facilities: [] as Facility[],
+  departments: [] as Department[],
+  attendanceRecords: [] as AttendanceRecord[],
 };
-
-/**
- * Env-aware initial values. In online mode every slice starts empty so the first
- * paint shows no mock rows — the sync effect fills them from Supabase. Offline
- * (no Supabase creds) the mock-data arrays seed the demo. Defined at module
- * scope so each `seed.*` is a stable reference: `useLocalStorageState`'s
- * `setValue` depends on `initialValue`, and a fresh `[]` per render would churn
- * the setter identity and re-fire the effects below every render.
- */
-const seed = isSupabaseConfigured
-  ? {
-      shifts: [] as Shift[],
-      applications: [] as Application[],
-      payments: [] as PostShiftRecord[],
-      notifications: [] as AppNotification[],
-      doctors: [] as Doctor[],
-      replacementRequests: [] as ReplacementRequest[],
-      savedShifts: [] as SavedShift[],
-      ratings: [] as Rating[],
-      facilities: [] as Facility[],
-      departments: [] as Department[],
-      attendanceRecords: [] as AttendanceRecord[],
-    }
-  : {
-      shifts: seedShifts,
-      applications: seedApplications,
-      payments: seedPayments,
-      notifications: seedNotifications,
-      doctors: seedDoctors,
-      replacementRequests: seedReplacementRequests,
-      savedShifts: [] as SavedShift[],
-      ratings: seedRatings,
-      facilities: seedFacilities,
-      departments: seedDepartmentNames.map((name) => ({
-        id: `dept-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-        facilityId: CITY_MEDICAL.facilityId,
-        name,
-      })) as Department[],
-      attendanceRecords: [] as AttendanceRecord[],
-    };
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuthRole();
@@ -1557,12 +1508,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return (
-    <AppDataContext.Provider value={value}>
-      {children}
-      <OfflineModeBanner />
-    </AppDataContext.Provider>
-  );
+  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
 
 export function useAppData() {

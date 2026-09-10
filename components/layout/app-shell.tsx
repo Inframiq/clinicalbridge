@@ -25,12 +25,6 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-// DEV-ONLY bypass: skips the login screen entirely so any /<role>/* section
-// can be opened directly while building/testing. `NODE_ENV` is inlined at
-// build time, so this branch (and the login/role-check it replaces) is
-// dead-code-eliminated from production bundles — never ships live.
-const DEV_BYPASS = process.env.NODE_ENV !== "production";
-
 export function AppShell({
   rootLabel,
   requiredRole,
@@ -38,7 +32,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const router = useRouter();
-  const { role, login } = useAuthRole();
+  const { role } = useAuthRole();
   const [collapsed, setCollapsed] = useLocalStorageState("lt-sidebar-collapsed", false);
 
   // `NavItem.icon` is a lucide component reference and can't cross the
@@ -57,20 +51,12 @@ export function AppShell({
     if (!mounted) return;
     if (role === requiredRole || initialProfile?.role === requiredRole) return;
 
-    if (DEV_BYPASS) {
-      // Auto sign-in as whichever role the current section needs, instead of
-      // redirecting away — lets you deep-link into any admin/doctor page
-      // during development without clicking through auth every time.
-      login(requiredRole);
-      return;
-    }
-
     if (role !== null) {
       router.replace(ROLE_HOME[role]);
     } else {
       router.replace("/login");
     }
-  }, [mounted, role, requiredRole, router, login, initialProfile]);
+  }, [mounted, role, requiredRole, router, initialProfile]);
 
   // `initialProfile` is a plain prop with the same value on the server render
   // and the client's first pass, so short-circuiting on it keeps hydration

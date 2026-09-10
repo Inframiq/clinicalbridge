@@ -126,12 +126,15 @@ function DocumentMedia({
 function DecisionButtons({
   status,
   readOnly,
+  canApprove,
   onApprove,
   onReject,
   size = "sm",
 }: {
   status: DocumentReviewStatus;
   readOnly: boolean;
+  /** False when the file can't actually be opened here — approving something you can't view isn't a real review. */
+  canApprove: boolean;
   onApprove: () => void;
   onReject: () => void;
   size?: "sm" | "default";
@@ -148,7 +151,13 @@ function DecisionButtons({
       >
         <ShieldX className="size-3.5" /> Reject
       </Button>
-      <Button type="button" size={size} disabled={readOnly || status === "approved"} onClick={onApprove}>
+      <Button
+        type="button"
+        size={size}
+        disabled={readOnly || status === "approved" || !canApprove}
+        title={!canApprove ? "This document can't be opened — reject it so the applicant re-uploads." : undefined}
+        onClick={onApprove}
+      >
         <CheckCircle2 className="size-3.5" /> Approve
       </Button>
     </div>
@@ -235,7 +244,13 @@ function FullscreenDocumentViewer({
                 reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
               }`}
         </p>
-        <DecisionButtons status={status} readOnly={readOnly} onApprove={onApprove} onReject={onReject} />
+        <DecisionButtons
+          status={status}
+          readOnly={readOnly}
+          canApprove={kind.hasUrl}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
       </div>
     </div>
   );
@@ -340,7 +355,13 @@ export function DocumentPreviewCard({
                 reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
               }`}
         </p>
-        <DecisionButtons status={status} readOnly={readOnly} onApprove={onApprove} onReject={onReject} />
+        <DecisionButtons
+          status={status}
+          readOnly={readOnly}
+          canApprove={kind.hasUrl}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
       </div>
 
       {fullscreen &&
