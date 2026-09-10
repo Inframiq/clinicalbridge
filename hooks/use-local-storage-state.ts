@@ -80,3 +80,19 @@ export function useLocalStorageState<T>(key: string, initialValue: T, serverValu
 
   return [value, setValue, reset] as const;
 }
+
+/**
+ * Wipes every `lt-*` cache key (including `lt-auth-session`) and notifies
+ * subscribers. Called on logout so the next sign-in on this browser starts
+ * from empty state instead of briefly showing the previous account's cached
+ * shifts/doctors/facilities/etc. while the post-login fetch is in flight -
+ * or indefinitely, for any slice whose fetch happens to fail.
+ */
+export function clearAllLocalStorageState() {
+  if (typeof window === "undefined") return;
+  const keys = Object.keys(window.localStorage).filter((k) => k.startsWith("lt-"));
+  for (const key of keys) {
+    window.localStorage.removeItem(key);
+    window.dispatchEvent(new Event(eventName(key)));
+  }
+}

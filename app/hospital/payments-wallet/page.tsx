@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PostShiftDetailPanel } from "@/components/dashboard/post-shift-detail-panel";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
+import { useDoctors } from "@/hooks/use-doctors";
 import { getDoctorById, joinPostShiftRecords, computeEscrowBalance, computeTotalPaidOut, type JoinedPostShiftRecord } from "@/lib/selectors";
 import { formatCurrency } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
@@ -20,6 +21,7 @@ import { payoutStatusMeta } from "@/lib/status";
 export default function PaymentsWalletPage() {
   const { payments } = usePayments();
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const joined = useMemo(() => joinPostShiftRecords(payments, shifts), [payments, shifts]);
@@ -44,11 +46,11 @@ export default function PaymentsWalletPage() {
       id: "doctor",
       header: "Doctor",
       accessorFn: (row) => {
-        const d = getDoctorById(row.doctorId);
+        const d = getDoctorById(doctors, row.doctorId);
         return d ? `${d.firstName} ${d.lastName}` : "";
       },
       cell: ({ row }) => {
-        const doctor = getDoctorById(row.original.doctorId);
+        const doctor = getDoctorById(doctors, row.original.doctorId);
         return doctor ? <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} size="sm" /> : null;
       },
     },
@@ -95,7 +97,7 @@ export default function PaymentsWalletPage() {
           </CardHeader>
           <CardContent>
             {selected ? (
-              <PostShiftDetailPanel record={selected} />
+              <PostShiftDetailPanel record={selected} doctors={doctors} />
             ) : (
               <p className="text-sm text-muted-foreground">Select a payment to view details.</p>
             )}

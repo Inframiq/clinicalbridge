@@ -6,6 +6,7 @@ export function useFacilities() {
   const {
     facilities,
     updateFacilityVerification,
+    updateFacilityProfile,
     reviewFacilityDocument,
     markFacilityDocumentViewed,
     registerHospital,
@@ -15,6 +16,7 @@ export function useFacilities() {
   return {
     facilities,
     updateFacilityVerification,
+    updateFacilityProfile,
     reviewFacilityDocument,
     markFacilityDocumentViewed,
     registerHospital,

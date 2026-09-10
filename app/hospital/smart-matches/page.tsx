@@ -10,16 +10,18 @@ import { Progress } from "@/components/ui/progress";
 import { Person } from "@/components/dashboard/person";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { useShifts } from "@/hooks/use-shifts";
+import { useDoctors } from "@/hooks/use-doctors";
 import { getTopMatchesForSpecialty } from "@/lib/selectors";
 import { formatDate } from "@/lib/format";
 import { Inbox } from "lucide-react";
 
 export default function SmartMatchesPage() {
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
   const openShifts = shifts.filter((s) => s.status === "open" || s.status === "pending");
   const [selectedId, setSelectedId] = useState(openShifts[0]?.id ?? null);
   const selectedShift = openShifts.find((s) => s.id === selectedId) ?? null;
-  const matches = selectedShift ? getTopMatchesForSpecialty(selectedShift.title) : [];
+  const matches = selectedShift ? getTopMatchesForSpecialty(doctors, selectedShift.title) : [];
 
   return (
     <div>

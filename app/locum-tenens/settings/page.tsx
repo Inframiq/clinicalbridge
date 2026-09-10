@@ -13,8 +13,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useDoctors } from "@/hooks/use-doctors";
-import { currentDoctor } from "@/lib/mock-data/doctors";
-import { DEPARTMENTS } from "@/lib/mock-data/departments";
+import { useAuthRole } from "@/context/auth-provider";
+
+const DEPARTMENTS = [
+  "Emergency Department",
+  "Intensive Care Unit",
+  "Pediatrics Unit",
+  "Orthopedics",
+  "General Medicine",
+] as const;
 
 const notificationPrefs = [
   { id: "shift-invites", label: "New shift invitations", description: "Get notified about shifts matching your specialty." },
@@ -33,8 +40,9 @@ const VERIFICATION_LABELS: Record<string, string> = {
 };
 
 export default function DoctorSettingsPage() {
+  const { profile } = useAuthRole();
   const { doctors, updateDoctorProfile } = useDoctors();
-  const me = doctors.find((d) => d.id === currentDoctor.id) ?? currentDoctor;
+  const me = doctors.find((d) => d.profileId === profile?.id);
 
   const [prefs, setPrefs] = useState<Record<string, boolean>>({
     "shift-invites": true,
@@ -43,32 +51,65 @@ export default function DoctorSettingsPage() {
     messages: false,
   });
 
-  const [phone, setPhone] = useState(me.phone);
-  const [email, setEmail] = useState(me.email);
-  const [locations, setLocations] = useState(me.preferredLocations.join("; "));
+  const [phone, setPhone] = useState(me?.phone ?? "");
+  const [email, setEmail] = useState(me?.email ?? "");
+  const [locations, setLocations] = useState(me?.preferredLocations.join("; ") ?? "");
 
-  const [specialty, setSpecialty] = useState(me.specialty);
-  const [subSpecialty, setSubSpecialty] = useState(me.subSpecialty ?? "");
-  const [licenseNumber, setLicenseNumber] = useState(me.licenseNumber);
-  const [licenseExpiry, setLicenseExpiry] = useState(me.licenseExpiry);
-  const [yearsOfExperience, setYearsOfExperience] = useState(me.yearsOfExperience);
-  const [languages, setLanguages] = useState((me.languages ?? []).join(", "));
+  const [specialty, setSpecialty] = useState(me?.specialty ?? "");
+  const [subSpecialty, setSubSpecialty] = useState(me?.subSpecialty ?? "");
+  const [licenseNumber, setLicenseNumber] = useState(me?.licenseNumber ?? "");
+  const [licenseExpiry, setLicenseExpiry] = useState(me?.licenseExpiry ?? "");
+  const [yearsOfExperience, setYearsOfExperience] = useState(me?.yearsOfExperience ?? "");
+  const [languages, setLanguages] = useState((me?.languages ?? []).join(", "));
   const [travelDistance, setTravelDistance] = useState(
-    me.replacementPreferences?.preferredTravelDistanceMiles ?? 25
+    me?.replacementPreferences?.preferredTravelDistanceMiles ?? 25
   );
   const [preferredDepartments, setPreferredDepartments] = useState<string[]>(
-    me.replacementPreferences?.preferredDepartments ?? []
+    me?.replacementPreferences?.preferredDepartments ?? []
   );
   const [availableDays, setAvailableDays] = useState<string[]>(
-    me.replacementPreferences?.availableDays ?? DAYS
+    me?.replacementPreferences?.availableDays ?? DAYS
   );
+
+  // Form state is seeded from `me` above, but `me` only resolves once the
+  // real doctor row has loaded from Supabase (it's undefined on first
+  // render) - `useState`'s initial value only applies at mount, so without
+  // this the fields would stay permanently blank once the real data arrives.
+  // Adjusting state during render (React's documented pattern for this,
+  // guarded so it only fires once per doctor identity) triggers an
+  // immediate re-render before paint, unlike the same reset in an effect.
+  const [syncedId, setSyncedId] = useState<string | undefined>(undefined);
+  if (me && me.id !== syncedId) {
+    setSyncedId(me.id);
+    setPhone(me.phone);
+    setEmail(me.email);
+    setLocations(me.preferredLocations.join("; "));
+    setSpecialty(me.specialty);
+    setSubSpecialty(me.subSpecialty ?? "");
+    setLicenseNumber(me.licenseNumber);
+    setLicenseExpiry(me.licenseExpiry);
+    setYearsOfExperience(me.yearsOfExperience);
+    setLanguages((me.languages ?? []).join(", "));
+    setTravelDistance(me.replacementPreferences?.preferredTravelDistanceMiles ?? 25);
+    setPreferredDepartments(me.replacementPreferences?.preferredDepartments ?? []);
+    setAvailableDays(me.replacementPreferences?.availableDays ?? DAYS);
+  }
 
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   }
 
   const verification =
-    me.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
+    me?.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
+
+  if (!me) {
+    return (
+      <div>
+        <PageHeader title="Settings" description="Manage your profile, qualifications, and preferences." />
+        <p className="text-sm text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
 
   return (
     <div>

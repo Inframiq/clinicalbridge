@@ -35,7 +35,7 @@ import {
   mapReplacementRequestRow,
   mapApplicationRow,
 } from "@/lib/supabase/services/shifts";
-import { mapShiftRow, mapRatingRow } from "@/lib/supabase/mappers";
+import { mapShiftRow, mapRatingRow, mapPayoutRow, mapNotificationRow } from "@/lib/supabase/mappers";
 import {
   getDoctors,
   mapDoctorRow,
@@ -47,6 +47,7 @@ import {
 import {
   getFacilities,
   mapFacilityRow,
+  updateFacilityProfileInSupabase,
   updateFacilityVerificationInSupabase,
   updateFacilityRegistrationStatusInSupabase,
   updateFacilityDocumentsInSupabase,
@@ -60,17 +61,44 @@ import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
 import {
   getDepartments,
+  mapDepartmentRow,
   createDepartmentInSupabase,
   renameDepartmentInSupabase,
   deleteDepartmentInSupabase,
 } from "@/lib/supabase/services/departments";
 import {
   getAttendanceRecords,
+  mapAttendanceRow,
   checkInInSupabase,
   checkOutInSupabase,
   verifyAttendanceInSupabase,
 } from "@/lib/supabase/services/attendance";
 import { reportSupabase } from "@/lib/supabase/log";
+
+/**
+ * Applies one realtime postgres_changes event to a local state slice: upserts
+ * the mapped row on INSERT/UPDATE, removes it by id on DELETE. DELETE
+ * payloads only carry the primary key under the default replica identity, so
+ * `payload.old` is read for `id` only - never mapped as a full row.
+ */
+function applyRealtimeChange<T extends { id: string }>(
+  setter: (updater: T[] | ((prev: T[]) => T[])) => void,
+  payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> },
+  mapRow: (row: Record<string, unknown>) => T
+) {
+  if (payload.eventType === "DELETE") {
+    const oldId = (payload.old as { id?: string })?.id;
+    if (!oldId) return;
+    setter((prev) => prev.filter((item) => item.id !== oldId));
+    return;
+  }
+  const mapped = mapRow(payload.new);
+  setter((prev) =>
+    prev.some((item) => item.id === mapped.id)
+      ? prev.map((item) => (item.id === mapped.id ? mapped : item))
+      : [mapped, ...prev]
+  );
+}
 
 export type NewShiftInput = Pick<
   Shift,
@@ -205,6 +233,10 @@ interface AppDataContextValue {
   updateFacilityVerification: (
     id: string,
     patch: Partial<HospitalVerification>
+  ) => Promise<void>;
+  updateFacilityProfile: (
+    id: string,
+    patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>
   ) => Promise<void>;
   /** Hospital counterpart of {@link reviewDoctorDocument}. */
   reviewFacilityDocument: (
@@ -342,33 +374,46 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   React.useEffect(() => {
+    // Not gated on `user?.id`: RLS already scopes every row this client can
+    // receive per table, so this can subscribe as soon as Supabase is
+    // configured and simply deliver nothing until a session exists.
     if (!isSupabaseConfigured) return;
     const supabase = createClient();
     const channel = supabase
-      .channel("super-admin-approvals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "doctors" },
-        (payload) => {
-          const mapped = mapDoctorRow(payload.new as Record<string, unknown>);
-          setDoctors((prev) =>
-            prev.some((d) => d.id === mapped.id)
-              ? prev.map((d) => (d.id === mapped.id ? mapped : d))
-              : [mapped, ...prev]
-          );
-        }
+      .channel("app-data-sync")
+      .on("postgres_changes", { event: "*", schema: "public", table: "doctors" }, (payload) =>
+        applyRealtimeChange(setDoctors, payload, mapDoctorRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "facilities" }, (payload) =>
+        applyRealtimeChange(setFacilities, payload, mapFacilityRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "shifts" }, (payload) =>
+        applyRealtimeChange(setShifts, payload, mapShiftRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "applications" }, (payload) =>
+        applyRealtimeChange(setApplications, payload, mapApplicationRow)
       )
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "facilities" },
-        (payload) => {
-          const mapped = mapFacilityRow(payload.new as Record<string, unknown>);
-          setFacilities((prev) =>
-            prev.some((f) => f.id === mapped.id)
-              ? prev.map((f) => (f.id === mapped.id ? mapped : f))
-              : [mapped, ...prev]
-          );
-        }
+        { event: "*", schema: "public", table: "replacement_requests" },
+        (payload) => applyRealtimeChange(setReplacementRequests, payload, mapReplacementRequestRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "payouts" }, (payload) =>
+        applyRealtimeChange(setPayments, payload, mapPayoutRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, (payload) =>
+        applyRealtimeChange(setRatings, payload, mapRatingRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, (payload) =>
+        applyRealtimeChange(setDepartments, payload, mapDepartmentRow)
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_records" },
+        (payload) => applyRealtimeChange(setAttendanceRecords, payload, mapAttendanceRow)
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) =>
+        applyRealtimeChange(setNotifications, payload, mapNotificationRow)
       )
       .subscribe((status) => {
         if (status !== "SUBSCRIBED" && status !== "CLOSED")
@@ -378,7 +423,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [
+    setDoctors,
+    setFacilities,
+    setShifts,
+    setApplications,
+    setReplacementRequests,
+    setPayments,
+    setRatings,
+    setDepartments,
+    setAttendanceRecords,
+    setNotifications,
+  ]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured || !user?.id) return;
@@ -858,6 +914,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [setDoctors]
+  );
+
+  const updateFacilityProfile = React.useCallback(
+    async (
+      id: string,
+      patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>
+    ) => {
+      let prevFacilities: Facility[] = [];
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) => (f.id === id ? { ...f, ...patch } : f));
+      });
+      const { error } = await updateFacilityProfileInSupabase(id, patch);
+      if (error) {
+        setFacilities(prevFacilities);
+        toast.error(`Couldn't update organization profile: ${error}`);
+      }
+    },
+    [setFacilities]
   );
 
   const createReplacementRequest = React.useCallback(
@@ -1441,6 +1516,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
       approveFacilityRegistration,
@@ -1491,6 +1567,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
       approveFacilityRegistration,

@@ -291,3 +291,20 @@ export interface AttendanceRecord {
   verifiedAt?: string;
   status: AttendanceStatus;
 }
+
+export interface MessageThread {
+  id: string;
+  participantOne: string;
+  participantTwo: string;
+  lastMessageAt: string;
+  createdAt: string;
+}
+
+export interface Message {
+  id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
+}

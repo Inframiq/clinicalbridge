@@ -11,19 +11,22 @@ import { TrendAreaChart } from "@/components/dashboard/charts/trend-area-chart";
 import { DataTable } from "@/components/data-table/data-table";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
-import { earningsSeries } from "@/lib/mock-data/analytics";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { joinPostShiftRecords, type JoinedPostShiftRecord } from "@/lib/selectors";
 import { formatCurrency } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
 
 export default function DoctorEarningsPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { payments } = usePayments();
   const { shifts } = useShifts();
 
   const joined = useMemo(
-    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === currentDoctor.id), shifts),
-    [payments, shifts]
+    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === myDoctorId), shifts),
+    [payments, shifts, myDoctorId]
   );
 
   const totalEarnings = joined.reduce((sum, p) => sum + p.netPayout, 0);
@@ -31,6 +34,15 @@ export default function DoctorEarningsPage() {
   const pendingPayout = joined
     .filter((p) => p.status !== "payment_processed")
     .reduce((sum, p) => sum + p.netPayout, 0);
+
+  const earningsSeries = Object.values(
+    joined.reduce<Record<string, { date: string; earnings: number }>>((acc, p) => {
+      const date = p.submittedAt.slice(0, 10);
+      acc[date] ??= { date, earnings: 0 };
+      acc[date].earnings += p.netPayout;
+      return acc;
+    }, {})
+  ).sort((a, b) => a.date.localeCompare(b.date));
 
   const columns: ColumnDef<JoinedPostShiftRecord>[] = [
     { id: "hospital", header: "Hospital", accessorFn: (r) => r.shift?.facilityName ?? "" },
@@ -52,8 +64,8 @@ export default function DoctorEarningsPage() {
     <div>
       <PageHeader title="Earnings" description="Track your income across all completed shifts." />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Total Earnings" value={formatCurrency(totalEarnings || 9640, { decimals: false })} icon={IndianRupee} iconTone="success" delta={{ value: "+15%", positive: true }} />
-        <StatCard label="Avg. Per Shift" value={formatCurrency(avgPerShift || 400, { decimals: false })} icon={TrendingUp} iconTone="brand" />
+        <StatCard label="Total Earnings" value={formatCurrency(totalEarnings, { decimals: false })} icon={IndianRupee} iconTone="success" />
+        <StatCard label="Avg. Per Shift" value={formatCurrency(avgPerShift, { decimals: false })} icon={TrendingUp} iconTone="brand" />
         <StatCard label="Pending Payout" value={formatCurrency(pendingPayout, { decimals: false })} icon={CalendarClock} iconTone="warning" />
       </div>
       <div className="mt-6">

@@ -11,18 +11,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { joinPostShiftRecords } from "@/lib/selectors";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
 
 export default function WalletPayoutsPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { payments } = usePayments();
   const { shifts } = useShifts();
 
   const joined = useMemo(
-    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === currentDoctor.id), shifts),
-    [payments, shifts]
+    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === myDoctorId), shifts),
+    [payments, shifts, myDoctorId]
   );
 
   const availableBalance = joined

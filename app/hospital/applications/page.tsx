@@ -10,8 +10,8 @@ import { Person } from "@/components/dashboard/person";
 import { DataTable } from "@/components/data-table/data-table";
 import { useApplications } from "@/hooks/use-applications";
 import { useShifts } from "@/hooks/use-shifts";
+import { useDoctors } from "@/hooks/use-doctors";
 import { getDoctorById } from "@/lib/selectors";
-import { getShiftById } from "@/lib/mock-data/shifts";
 import { applicationStatusMeta } from "@/lib/status";
 import { formatDate } from "@/lib/format";
 import type { Application } from "@/types";
@@ -19,6 +19,7 @@ import type { Application } from "@/types";
 export default function ApplicationsPage() {
   const { applications } = useApplications();
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
 
   const accepted = applications.filter((a) => a.status === "accepted").length;
   const inReview = applications.filter((a) => a.status === "in_review").length;
@@ -30,11 +31,11 @@ export default function ApplicationsPage() {
         id: "doctor",
         header: "Doctor",
         accessorFn: (row) => {
-          const d = getDoctorById(row.doctorId);
+          const d = getDoctorById(doctors, row.doctorId);
           return d ? `${d.firstName} ${d.lastName}` : "";
         },
         cell: ({ row }) => {
-          const doctor = getDoctorById(row.original.doctorId);
+          const doctor = getDoctorById(doctors, row.original.doctorId);
           return doctor ? (
             <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} subtitle={doctor.specialty} size="sm" />
           ) : null;
@@ -44,11 +45,11 @@ export default function ApplicationsPage() {
         id: "shift",
         header: "Shift",
         accessorFn: (row) => {
-          const shift = shifts.find((s) => s.id === row.shiftId) ?? getShiftById(row.shiftId);
+          const shift = shifts.find((s) => s.id === row.shiftId);
           return shift?.title ?? "";
         },
         cell: ({ row }) => {
-          const shift = shifts.find((s) => s.id === row.original.shiftId) ?? getShiftById(row.original.shiftId);
+          const shift = shifts.find((s) => s.id === row.original.shiftId);
           return (
             <div>
               <p className="font-medium text-foreground">{shift?.title}</p>
@@ -77,7 +78,7 @@ export default function ApplicationsPage() {
         },
       },
     ],
-    [shifts]
+    [shifts, doctors]
   );
 
   return (

@@ -81,7 +81,7 @@ export default function ShiftCalendarPage() {
                         </div>
                         <p className="truncate text-xs text-muted-foreground">
                           {shift.department} · {shift.startTime}–{shift.endTime} ·{" "}
-                          {getDoctorName(shift.assignedDoctorId)}
+                          {getDoctorName(doctors, shift.assignedDoctorId)}
                         </p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
@@ -89,7 +89,7 @@ export default function ShiftCalendarPage() {
                           <Select
                             onValueChange={(doctorId) => {
                               assignDoctorToShift(shift.id, doctorId);
-                              toast.success(`${getDoctorName(doctorId)} assigned to ${shift.title}`);
+                              toast.success(`${getDoctorName(doctors, doctorId)} assigned to ${shift.title}`);
                             }}
                           >
                             <SelectTrigger className="w-[180px]">

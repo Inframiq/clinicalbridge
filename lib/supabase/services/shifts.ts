@@ -121,7 +121,7 @@ export async function createShiftInSupabase(
         id: shift.id,
         title: shift.title,
         department_name: shift.department || "General",
-        facility_name: shift.facilityName || "City Medical Center",
+        facility_name: shift.facilityName,
         facility_id: shift.facilityId,
         location: shift.location || {},
         date: shift.date,

@@ -9,6 +9,8 @@ import { reportSupabase, describeSupabaseError } from "../log";
 export interface Facility {
   id: string;
   name: string;
+  /** Not collected at onboarding today; only ever set from the hospital settings page. */
+  address?: string;
   city: string;
   registrationNumber: string;
   governmentLicense: string;
@@ -39,6 +41,7 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
   return {
     id: item.id,
     name: item.name,
+    address: item.address ?? "",
     city: item.city ?? "",
     registrationNumber: item.registration_number ?? "",
     governmentLicense: item.government_license ?? "",
@@ -77,6 +80,45 @@ export async function getFacilities(
   } catch (err) {
     reportSupabase("getFacilities", err);
     return { data: [], error: describeSupabaseError(err) };
+  }
+}
+
+export async function updateFacilityProfileInSupabase(
+  id: string,
+  patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>,
+  client?: SupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateFacilityProfileInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) update.name = patch.name;
+  if (patch.address !== undefined) update.address = patch.address;
+  if (patch.city !== undefined) update.city = patch.city;
+  if (patch.phone !== undefined) update.phone = patch.phone;
+  if (patch.email !== undefined) update.email = patch.email;
+  if (patch.contactPerson !== undefined) update.contact_person = patch.contactPerson;
+  if (Object.keys(update).length === 0) return { data: null, error: null };
+
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("facilities")
+      .update(update)
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateFacilityProfileInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateFacilityProfileInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
   }
 }
 

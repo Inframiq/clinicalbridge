@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import {
   Bell,
@@ -27,11 +28,11 @@ import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
 import type { NavItem } from "@/lib/nav-config";
-import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
-import { facilities } from "@/lib/mock-data/organizations";
 import { useAuthRole } from "@/context/auth-provider";
 import type { UserProfile } from "@/context/auth-provider";
 import { useAppData } from "@/context/app-data-provider";
+import { useMessages } from "@/context/messages-provider";
+import { useFacilities } from "@/hooks/use-facilities";
 import { initials } from "@/lib/format";
 
 export function Topbar({
@@ -50,14 +51,21 @@ export function Topbar({
   initialProfile?: UserProfile | null;
 }) {
   const router = useRouter();
-  const { name: ctxName, title: ctxTitle, logout } = useAuthRole();
+  const { name: ctxName, title: ctxTitle, role: ctxRole, profile, logout } = useAuthRole();
   const name = ctxName || initialProfile?.full_name || "";
   const title =
     ctxTitle ||
     (initialProfile ? initialProfile.role.replace("_", " ").toUpperCase() : "");
+  const role = ctxRole || initialProfile?.role;
   const { notifications, markNotificationRead } = useAppData();
+  const { facilities } = useFacilities();
+  const { threads, totalUnread } = useMessages();
   const [mobileOpen, setMobileOpen] = useState(false);
   const unreadCount = notifications.filter((n) => !n.read).length;
+  const myProfileId = profile?.id ?? initialProfile?.id;
+  const myFacility = facilities.find((f) => f.profileId === myProfileId);
+  const messagesHref =
+    role === "hospital" ? "/hospital/messages" : role === "working_doctor" ? "/working-doctor/messages" : "/locum-tenens/messages";
 
   const handleLogout = () => {
     logout();
@@ -87,52 +95,43 @@ export function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="hidden gap-2 sm:flex">
-              <Building2 className="size-4 text-muted-foreground" />
-              <span className="max-w-[140px] truncate">{ACTIVE_ORGANIZATION.name}</span>
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Switch organization</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {facilities.map((f) => (
-              <DropdownMenuItem key={f.id}>
-                <Building2 className="size-4 text-muted-foreground" />
-                <div className="flex flex-col">
-                  <span>{f.name}</span>
-                  <span className="text-xs text-muted-foreground">{f.city}</span>
-                </div>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {myFacility && (
+          <Button variant="outline" size="sm" className="hidden gap-2 sm:flex" disabled>
+            <Building2 className="size-4 text-muted-foreground" />
+            <span className="max-w-[140px] truncate">{myFacility.name}</span>
+          </Button>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative" aria-label="Messages">
               <MessageSquare className="size-[18px]" />
-              <Badge className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full p-0 text-[10px]">
-                2
-              </Badge>
+              {totalUnread > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-4 min-w-4 justify-center rounded-full p-0 text-[10px]">
+                  {totalUnread}
+                </Badge>
+              )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-72">
             <DropdownMenuLabel>Messages</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="flex-col items-start gap-0.5">
-              <span className="font-medium">Nurse Team</span>
-              <span className="text-xs text-muted-foreground">
-                &ldquo;New patient arriving in 10 mins&rdquo;
-              </span>
-            </DropdownMenuItem>
-            <DropdownMenuItem className="flex-col items-start gap-0.5">
-              <span className="font-medium">Front Desk</span>
-              <span className="text-xs text-muted-foreground">
-                Timesheet approved for May 25
-              </span>
+            {threads.length === 0 ? (
+              <p className="p-2 text-xs text-muted-foreground">No conversations yet.</p>
+            ) : (
+              threads.slice(0, 5).map((t) => (
+                <DropdownMenuItem key={t.id} asChild className="flex-col items-start gap-0.5">
+                  <Link href={messagesHref}>
+                    <span className="font-medium">{t.otherParticipantName}</span>
+                  </Link>
+                </DropdownMenuItem>
+              ))
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href={messagesHref} className="justify-center text-xs text-muted-foreground">
+                View all messages
+              </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { toast } from "sonner";
 import {
   Bell,
@@ -16,23 +15,13 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Person } from "@/components/dashboard/person";
-import { Timeline } from "@/components/dashboard/timeline";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
-import { patients, shiftTimeline } from "@/lib/mock-data/notifications";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatHoursMinutes } from "@/lib/format";
-import { Search } from "lucide-react";
-
-const patientStatusMeta = {
-  in_progress: { label: "In Progress", tone: "brand" as const },
-  pending: { label: "Pending", tone: "warning" as const },
-  completed: { label: "Completed", tone: "success" as const },
-};
 
 const quickActions = [
   { icon: User, label: "My Profile" },
@@ -43,10 +32,12 @@ const quickActions = [
 ];
 
 export default function ShiftHubPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctor = doctors.find((d) => d.profileId === profile?.id);
   const { shifts } = useShifts();
-  const [search, setSearch] = useState("");
   const currentShift = shifts.find(
-    (s) => s.assignedDoctorId === currentDoctor.id && s.status === "active"
+    (s) => s.assignedDoctorId === myDoctor?.id && s.status === "active"
   );
 
   const elapsed = currentShift?.elapsedMinutes ?? 0;
@@ -54,15 +45,11 @@ export default function ShiftHubPage() {
   const remaining = Math.max(0, total - elapsed);
   const progressPct = currentShift?.progressPct ?? Math.round((elapsed / total) * 100);
 
-  const filteredPatients = patients.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase())
-  );
-
   return (
     <div>
       <PageHeader
         title="Shift Hub"
-        description="Your real-time hub to manage shifts, updates, and patient care."
+        description="Your real-time hub to manage shifts and updates."
       />
 
       {!currentShift ? (
@@ -115,54 +102,15 @@ export default function ShiftHubPage() {
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Patients &amp; Updates</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Tabs defaultValue="patients">
-                  <TabsList>
-                    <TabsTrigger value="patients">Patients ({filteredPatients.length})</TabsTrigger>
-                    <TabsTrigger value="updates">Live Updates</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="patients" className="mt-4 space-y-4">
-                    <div className="relative max-w-xs">
-                      <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search patients..."
-                        className="pl-9"
-                      />
-                    </div>
-                    <ul className="divide-y divide-border">
-                      {filteredPatients.map((p) => {
-                        const meta = patientStatusMeta[p.status];
-                        return (
-                          <li key={p.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                            <Person name={p.name} subtitle={`${p.mrn} · ${p.bedRoom}`} size="sm" />
-                            <div className="text-right">
-                              <StatusBadge label={meta.label} tone={meta.tone} dot={false} />
-                              <p className="mt-1 text-xs text-muted-foreground">{p.lastUpdate}</p>
-                            </div>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </TabsContent>
-                  <TabsContent value="updates" className="mt-4">
-                    <Timeline events={shiftTimeline} />
-                  </TabsContent>
-                </Tabs>
-              </CardContent>
-            </Card>
           </div>
 
           <div className="space-y-6">
             <Card>
               <CardContent className="flex flex-col items-center text-center">
-                <Person name={`Dr. ${currentDoctor.firstName} ${currentDoctor.lastName}`} subtitle={currentDoctor.specialty} />
+                <Person
+                  name={myDoctor ? `Dr. ${myDoctor.firstName} ${myDoctor.lastName}` : "Loading..."}
+                  subtitle={myDoctor?.specialty}
+                />
               </CardContent>
             </Card>
             <Card>

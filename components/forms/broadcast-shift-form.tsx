@@ -22,7 +22,6 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
 import { formatCurrency, to12Hour } from "@/lib/format";
 import type { ExperienceLevel, ShiftType } from "@/types";
 
@@ -316,7 +315,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <FieldContent>
             <div className="flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
               <MapPin className="size-4 shrink-0" />
-              {myFacility ? `${myFacility.name}, ${myFacility.city}` : `${ACTIVE_ORGANIZATION.name}, ${ACTIVE_ORGANIZATION.address}`}
+              {myFacility ? `${myFacility.name}, ${myFacility.city}` : "No facility record found for your account"}
             </div>
           </FieldContent>
         </Field>

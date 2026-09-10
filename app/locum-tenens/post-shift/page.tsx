@@ -12,20 +12,24 @@ import { PostShiftDetailPanel } from "@/components/dashboard/post-shift-detail-p
 import { DataTable } from "@/components/data-table/data-table";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { joinPostShiftRecords, type JoinedPostShiftRecord } from "@/lib/selectors";
 import { formatCurrency } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
 import { CalendarCheck, Clock3, Wallet } from "lucide-react";
 
 export default function DoctorPostShiftPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { payments } = usePayments();
   const { shifts } = useShifts();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const joined = useMemo(
-    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === currentDoctor.id), shifts),
-    [payments, shifts]
+    () => joinPostShiftRecords(payments.filter((p) => p.doctorId === myDoctorId), shifts),
+    [payments, shifts, myDoctorId]
   );
   const selected = joined.find((p) => p.id === selectedId) ?? joined[0] ?? null;
 

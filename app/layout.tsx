@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { PLATFORM } from "@/lib/config/brand";
 import { AuthProvider } from "@/context/auth-provider";
 import { AppDataProvider } from "@/context/app-data-provider";
+import { MessagesProvider } from "@/context/messages-provider";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -36,8 +37,10 @@ export default function RootLayout({
         <TooltipProvider delayDuration={200}>
           <AuthProvider>
             <AppDataProvider>
-              {children}
-              <Toaster richColors closeButton position="top-right" />
+              <MessagesProvider>
+                {children}
+                <Toaster richColors closeButton position="top-right" />
+              </MessagesProvider>
             </AppDataProvider>
           </AuthProvider>
         </TooltipProvider>

@@ -32,7 +32,7 @@ export default function ReplacementRequestsPage() {
   } = useReplacementRequests();
   const { shifts } = useShifts();
   const { applications, updateApplicationStatus } = useApplications();
-  const { assignDoctorToShift } = useDoctors();
+  const { doctors, assignDoctorToShift } = useDoctors();
 
   const pending = replacementRequests.filter((r) => r.status === "pending");
   const approved = replacementRequests.filter((r) => r.status === "approved");
@@ -62,7 +62,7 @@ export default function ReplacementRequestsPage() {
         ) : (
           <div className="space-y-4">
             {replacementRequests.map((request) => {
-              const doctor = getDoctorById(request.requestingDoctorId);
+              const doctor = getDoctorById(doctors, request.requestingDoctorId);
               const shift = shifts.find((s) => s.id === request.shiftId);
               const meta = statusMeta[request.status];
               const applicants =
@@ -114,7 +114,7 @@ export default function ReplacementRequestsPage() {
                           ) : (
                             <ul className="space-y-2">
                               {applicants.map((app) => {
-                                const applicant = getDoctorById(app.doctorId);
+                                const applicant = getDoctorById(doctors, app.doctorId);
                                 if (!applicant) return null;
                                 return (
                                   <li key={app.id} className="flex items-center justify-between gap-2">

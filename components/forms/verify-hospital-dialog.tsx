@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { DocumentPreviewCard } from "@/components/forms/document-preview-card";
 import { useFacilities } from "@/hooks/use-facilities";
-import type { Facility } from "@/lib/mock-data/organizations";
+import type { Facility } from "@/lib/supabase/services/facilities";
 import type { DocumentReviewStatus } from "@/lib/supabase/storage";
 
 const KNOWN_LABELS: Record<string, string> = {

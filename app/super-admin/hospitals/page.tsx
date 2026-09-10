@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table/data-table";
 import { VerifyHospitalDialog } from "@/components/forms/verify-hospital-dialog";
 import { useFacilities } from "@/hooks/use-facilities";
-import type { Facility } from "@/lib/mock-data/organizations";
+import type { Facility } from "@/lib/supabase/services/facilities";
 
 const statusMeta = {
   verified: { label: "Verified", tone: "success" as const },

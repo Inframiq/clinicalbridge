@@ -7,18 +7,21 @@ import type { JoinedPostShiftRecord } from "@/lib/selectors";
 import { getDoctorById } from "@/lib/selectors";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
+import type { Doctor } from "@/types";
 
 export function PostShiftDetailPanel({
   record,
   showDoctor = true,
   actions,
+  doctors = [],
 }: {
   record: JoinedPostShiftRecord;
   showDoctor?: boolean;
   actions?: React.ReactNode;
+  doctors?: Doctor[];
 }) {
   const meta = payoutStatusMeta[record.status];
-  const doctor = getDoctorById(record.doctorId);
+  const doctor = getDoctorById(doctors, record.doctorId);
 
   return (
     <div className="space-y-5">

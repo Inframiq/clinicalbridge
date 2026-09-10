@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import type { UserRole } from "@/types";
-import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { useLocalStorageState, clearAllLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { reportSupabase } from "@/lib/supabase/log";
@@ -389,6 +389,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
+    clearAllLocalStorageState();
     setSession(defaultSession);
   }, [supabase, setSession]);
 

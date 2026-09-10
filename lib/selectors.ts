@@ -1,6 +1,4 @@
-import type { Shift, PostShiftRecord, Application } from "@/types";
-import { doctors } from "@/lib/mock-data/doctors";
-import { getShiftById } from "@/lib/mock-data/shifts";
+import type { Shift, PostShiftRecord, Application, Doctor } from "@/types";
 
 export interface JoinedPostShiftRecord extends PostShiftRecord {
   shift?: Shift;
@@ -12,16 +10,16 @@ export function joinPostShiftRecords(
 ): JoinedPostShiftRecord[] {
   return payments.map((p) => ({
     ...p,
-    shift: shifts.find((s) => s.id === p.shiftId) ?? getShiftById(p.shiftId),
+    shift: shifts.find((s) => s.id === p.shiftId),
   }));
 }
 
-export function getDoctorById(id?: string) {
+export function getDoctorById(doctors: Doctor[], id?: string) {
   return doctors.find((d) => d.id === id);
 }
 
-export function getDoctorName(id?: string) {
-  const doctor = getDoctorById(id);
+export function getDoctorName(doctors: Doctor[], id?: string) {
+  const doctor = getDoctorById(doctors, id);
   return doctor ? `Dr. ${doctor.firstName} ${doctor.lastName}` : "Unassigned";
 }
 
@@ -57,7 +55,7 @@ export function getPendingApplications(applications: Application[]) {
   return applications.filter((a) => a.status === "in_review");
 }
 
-export function getTopMatchesForSpecialty(specialty: string, excludeIds: string[] = []) {
+export function getTopMatchesForSpecialty(doctors: Doctor[], specialty: string, excludeIds: string[] = []) {
   return doctors
     .filter((d) => d.specialty === specialty && !excludeIds.includes(d.id))
     .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0));

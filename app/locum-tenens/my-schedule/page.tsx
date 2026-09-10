@@ -8,7 +8,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { CalendarDays } from "lucide-react";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { shiftStatusMeta } from "@/lib/status";
 
 function toDateKey(date: Date) {
@@ -16,10 +17,13 @@ function toDateKey(date: Date) {
 }
 
 export default function MySchedulePage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { shifts: allShifts } = useShifts();
   const myShifts = useMemo(
-    () => allShifts.filter((s) => s.assignedDoctorId === currentDoctor.id),
-    [allShifts]
+    () => allShifts.filter((s) => s.assignedDoctorId === myDoctorId),
+    [allShifts, myDoctorId]
   );
   const scheduledDates = useMemo(() => myShifts.map((s) => new Date(s.date)), [myShifts]);
   const [selected, setSelected] = useState<Date | undefined>(new Date("2025-05-25"));

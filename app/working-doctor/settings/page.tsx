@@ -9,31 +9,43 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EmptyState } from "@/components/dashboard/empty-state";
 import { useDoctors } from "@/hooks/use-doctors";
-import { currentWorkingDoctor } from "@/lib/mock-data/doctors";
-import { DEPARTMENTS } from "@/lib/mock-data/departments";
+import { useDepartments } from "@/hooks/use-departments";
+import { useAuthRole } from "@/context/auth-provider";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export default function WorkingDoctorSettingsPage() {
   const { doctors, updateDoctorProfile } = useDoctors();
-  const me = doctors.find((d) => d.id === currentWorkingDoctor.id) ?? currentWorkingDoctor;
+  const { departments: allDepartments } = useDepartments();
+  const { profile } = useAuthRole();
+  const me = doctors.find((d) => d.profileId === profile?.id);
 
-  const [phone, setPhone] = useState(me.phone);
-  const [email, setEmail] = useState(me.email);
+  const [phone, setPhone] = useState(me?.phone ?? "");
+  const [email, setEmail] = useState(me?.email ?? "");
   const [travelDistance, setTravelDistance] = useState(
-    me.replacementPreferences?.preferredTravelDistanceMiles ?? 10
+    me?.replacementPreferences?.preferredTravelDistanceMiles ?? 10
   );
-  const [maxHours, setMaxHours] = useState(me.replacementPreferences?.maxHoursPerWeek ?? 40);
+  const [maxHours, setMaxHours] = useState(me?.replacementPreferences?.maxHoursPerWeek ?? 40);
   const [departments, setDepartments] = useState<string[]>(
-    me.replacementPreferences?.preferredDepartments ?? [me.department ?? ""]
+    me?.replacementPreferences?.preferredDepartments ?? (me?.department ? [me.department] : [])
   );
   const [availableDays, setAvailableDays] = useState<string[]>(
-    me.replacementPreferences?.availableDays ?? DAYS
+    me?.replacementPreferences?.availableDays ?? DAYS
   );
 
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
+  }
+
+  if (!me) {
+    return (
+      <div>
+        <PageHeader title="Settings" description="Manage your profile and replacement preferences." />
+        <EmptyState icon={User} title="Profile not found" description="Your doctor profile hasn't loaded yet." />
+      </div>
+    );
   }
 
   return (
@@ -50,7 +62,7 @@ export default function WorkingDoctorSettingsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                updateDoctorProfile(currentWorkingDoctor.id, { phone, email });
+                updateDoctorProfile(me.id, { phone, email });
                 toast.success("Profile updated");
               }}
             >
@@ -61,14 +73,14 @@ export default function WorkingDoctorSettingsPage() {
                     <FieldContent>
                       <div className="relative">
                         <User className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input id="firstName" defaultValue={currentWorkingDoctor.firstName} className="pl-9" disabled />
+                        <Input id="firstName" defaultValue={me.firstName} className="pl-9" disabled />
                       </div>
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="lastName">Last Name</FieldLabel>
                     <FieldContent>
-                      <Input id="lastName" defaultValue={currentWorkingDoctor.lastName} disabled />
+                      <Input id="lastName" defaultValue={me.lastName} disabled />
                     </FieldContent>
                   </Field>
                 </div>
@@ -148,13 +160,13 @@ export default function WorkingDoctorSettingsPage() {
                 <FieldLabel>Preferred Departments</FieldLabel>
                 <FieldContent>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {DEPARTMENTS.map((dept) => (
-                      <label key={dept} className="flex items-center gap-2 text-sm">
+                    {allDepartments.map((dept) => (
+                      <label key={dept.id} className="flex items-center gap-2 text-sm">
                         <Checkbox
-                          checked={departments.includes(dept)}
-                          onCheckedChange={() => toggle(departments, setDepartments, dept)}
+                          checked={departments.includes(dept.name)}
+                          onCheckedChange={() => toggle(departments, setDepartments, dept.name)}
                         />
-                        {dept}
+                        {dept.name}
                       </label>
                     ))}
                   </div>
@@ -181,7 +193,7 @@ export default function WorkingDoctorSettingsPage() {
               <div className="flex justify-end">
                 <Button
                   onClick={() => {
-                    updateDoctorProfile(currentWorkingDoctor.id, {
+                    updateDoctorProfile(me.id, {
                       replacementPreferences: {
                         preferredTravelDistanceMiles: travelDistance,
                         maxHoursPerWeek: maxHours,
