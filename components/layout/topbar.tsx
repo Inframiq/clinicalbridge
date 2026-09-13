@@ -66,6 +66,14 @@ export function Topbar({
   const myFacility = facilities.find((f) => f.profileId === myProfileId);
   const messagesHref =
     role === "hospital" ? "/hospital/messages" : role === "working_doctor" ? "/working-doctor/messages" : "/locum-tenens/messages";
+  const settingsHref =
+    role === "hospital"
+      ? "/hospital/settings"
+      : role === "working_doctor"
+        ? "/working-doctor/settings"
+        : role === "super_admin"
+          ? "/super-admin/settings"
+          : "/locum-tenens/settings";
 
   const handleLogout = () => {
     logout();
@@ -185,11 +193,15 @@ export function Topbar({
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="size-4" /> Profile
+            <DropdownMenuItem asChild>
+              <Link href={settingsHref}>
+                <User className="size-4" /> Profile
+              </Link>
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings className="size-4" /> Settings
+            <DropdownMenuItem asChild>
+              <Link href={settingsHref}>
+                <Settings className="size-4" /> Settings
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem variant="destructive" onClick={handleLogout}>
