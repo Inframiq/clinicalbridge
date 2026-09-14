@@ -64,7 +64,11 @@ const schema = z.object({
     .min(1, "Required")
     .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   gender: z.string().min(1, "Required"),
-  npiNumber: z.string().min(5, "Required"),
+  npiNumber: z
+    .string()
+    .min(1, "Required")
+    .min(10, "NPI number must be 10 characters")
+    .max(10, "NPI number cannot exceed 10 characters"),
   primarySpecialty: z.string().min(1, "Required"),
   subSpecialty: z.string().optional(),
   yearsOfExperience: z.string().min(1, "Required"),
@@ -475,7 +479,7 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.npiNumber}>
                       <FieldLabel htmlFor="npiNumber">NPI Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="npiNumber" {...register("npiNumber")} />
+                        <Input id="npiNumber" maxLength={10} {...register("npiNumber")} />
                         <FieldError errors={[errors.npiNumber]} />
                       </FieldContent>
                     </Field>
