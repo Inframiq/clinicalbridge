@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
+import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -62,6 +62,20 @@ export default function SuperAdminDoctorsPage() {
       {
         accessorKey: "licenseNumber",
         header: "Registration No.",
+      },
+      {
+        id: "profile",
+        header: "Profile",
+        cell: ({ row }) => (
+          <VerifyDoctorDialog
+            doctor={row.original}
+            trigger={
+              <Button variant="ghost" size="sm">
+                <UserRound className="size-3.5" /> View Profile
+              </Button>
+            }
+          />
+        ),
       },
       {
         id: "verification",

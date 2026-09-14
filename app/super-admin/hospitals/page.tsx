@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Building2, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
+import { Building2, CheckCircle2, Clock3, ShieldAlert, ShieldX, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -50,6 +50,20 @@ export default function SuperAdminHospitalsPage() {
             <p className="text-foreground">{row.original.contactPerson}</p>
             <p className="text-xs text-muted-foreground">{row.original.email}</p>
           </div>
+        ),
+      },
+      {
+        id: "profile",
+        header: "Profile",
+        cell: ({ row }) => (
+          <VerifyHospitalDialog
+            facility={row.original}
+            trigger={
+              <Button variant="ghost" size="sm">
+                <UserRound className="size-3.5" /> View Profile
+              </Button>
+            }
+          />
         ),
       },
       {

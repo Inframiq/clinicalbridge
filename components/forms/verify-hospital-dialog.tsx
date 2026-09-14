@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ShieldX } from "lucide-react";
+import { CheckCircle2, Mail, Phone, ShieldX, User } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -76,7 +76,7 @@ export function VerifyHospitalDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <div className="shrink-0 border-b border-border px-6 py-4 pr-12">
-          <DialogTitle>Document Verification</DialogTitle>
+          <DialogTitle>Profile &amp; Verification</DialogTitle>
           <DialogDescription>
             Approve or reject each uploaded document. The hospital only goes live once every
             document is approved; a single rejection rejects the registration.
@@ -90,6 +90,23 @@ export function VerifyHospitalDialog({
               <p className="mt-1 text-xs font-medium text-muted-foreground">
                 Registration status: {facility.registrationStatus}
               </p>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+            {facility.contactPerson && (
+              <span className="flex items-center gap-1">
+                <User className="size-3.5" /> {facility.contactPerson}
+              </span>
+            )}
+            {facility.email && (
+              <span className="flex items-center gap-1">
+                <Mail className="size-3.5" /> {facility.email}
+              </span>
+            )}
+            {facility.phone && (
+              <span className="flex items-center gap-1">
+                <Phone className="size-3.5" /> {facility.phone}
+              </span>
             )}
           </div>
         </div>

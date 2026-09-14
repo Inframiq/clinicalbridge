@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, ShieldX } from "lucide-react";
+import { CheckCircle2, Mail, Phone, ShieldX } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Person } from "@/components/dashboard/person";
 import { DocumentPreviewCard } from "@/components/forms/document-preview-card";
@@ -66,16 +67,32 @@ export function VerifyDoctorDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="flex max-h-[90dvh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <div className="shrink-0 border-b border-border px-6 py-4 pr-12">
-          <DialogTitle>Document Verification</DialogTitle>
+          <DialogTitle>Profile &amp; Verification</DialogTitle>
           <DialogDescription>
             Approve or reject each uploaded document. The doctor is only marked verified once
             every document is approved; a single rejection rejects the registration.
           </DialogDescription>
           <div className="mt-3 flex items-center justify-between gap-3">
-            <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} subtitle={doctor.department} />
+            <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} subtitle={doctor.specialty} />
             {doctor.registrationStatus && (
               <span className="text-xs font-medium text-muted-foreground">
                 {doctor.registrationStatus}
+              </span>
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
+            <Badge variant="secondary">
+              {doctor.doctorKind === "working" ? "Working Doctor" : "Locum Tenens"}
+            </Badge>
+            {doctor.department && <span>{doctor.department}</span>}
+            {doctor.email && (
+              <span className="flex items-center gap-1">
+                <Mail className="size-3.5" /> {doctor.email}
+              </span>
+            )}
+            {doctor.phone && (
+              <span className="flex items-center gap-1">
+                <Phone className="size-3.5" /> {doctor.phone}
               </span>
             )}
           </div>
