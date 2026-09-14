@@ -74,6 +74,14 @@ export function Topbar({
         : role === "super_admin"
           ? "/super-admin/settings"
           : "/locum-tenens/settings";
+  const profileHref =
+    role === "hospital"
+      ? "/hospital/profile"
+      : role === "working_doctor"
+        ? "/working-doctor/profile"
+        : role === "super_admin"
+          ? "/super-admin/profile"
+          : "/locum-tenens/profile";
 
   const handleLogout = () => {
     logout();
@@ -194,7 +202,7 @@ export function Topbar({
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href={settingsHref}>
+              <Link href={profileHref}>
                 <User className="size-4" /> Profile
               </Link>
             </DropdownMenuItem>

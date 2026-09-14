@@ -13,9 +13,12 @@ export interface UserProfile {
   email: string;
   role: UserRole;
   full_name?: string;
+  phone?: string;
+  avatar_url?: string;
   verified: boolean;
   completed_onboarding: boolean;
   verification_status: string; // 'Pending' | 'Submitted' | 'Under Review' | 'Needs Changes' | 'Rejected' | 'Approved'
+  created_at?: string;
 }
 
 interface AuthSession {
@@ -49,6 +52,7 @@ interface AuthContextValue extends AuthSession {
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<UserProfile | null>;
+  updateAccountProfile: (patch: { full_name?: string; phone?: string }) => Promise<{ error: Error | null }>;
   loading: boolean;
 }
 
@@ -196,6 +200,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     return profile;
   }, [supabase, fetchProfile, setSession]);
+
+  // Account-level fields only (full_name, phone) - the privileged-column guard
+  // trigger on public.profiles (migration 012) rejects any attempt to change
+  // role/verified/verification_status through a plain UPDATE, so this can't
+  // be misused to self-approve or escalate.
+  const updateAccountProfile = React.useCallback(
+    async (patch: { full_name?: string; phone?: string }) => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { error: new Error("Not signed in") };
+      try {
+        const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
+        if (error) {
+          reportSupabase("auth.updateAccountProfile", error);
+          return { error: new Error(error.message) };
+        }
+        await refreshProfile();
+        return { error: null };
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        return { error };
+      }
+    },
+    [supabase, refreshProfile]
+  );
 
   const signInWithSupabase = React.useCallback(
     async (email: string, password: string, expectedRole?: UserRole) => {
@@ -404,6 +433,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,
+      updateAccountProfile,
       loading,
     }),
     [
@@ -416,6 +446,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,
+      updateAccountProfile,
       loading,
     ]
   );
