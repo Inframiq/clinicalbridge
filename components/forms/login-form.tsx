@@ -21,7 +21,7 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, ROLE_HOME, ROLE_ORDER } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_HOME, ROLE_ONBOARDING, ROLE_ORDER } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -66,13 +66,6 @@ function MicrosoftIcon() {
   );
 }
 
-const roleOnboardingPaths: Record<UserRole, string> = {
-  hospital: "/onboarding/hospital",
-  working_doctor: "/onboarding/working-doctor",
-  locum_tenens: "/onboarding/locum-tenens",
-  super_admin: "/super-admin/dashboard",
-};
-
 export function LoginForm() {
   const router = useRouter();
   const { signInWithSupabase, signInWithOAuth } = useAuthRole();
@@ -91,7 +84,7 @@ export function LoginForm() {
   function routeBasedOnStatus(userRole: UserRole, completedOnboarding: boolean, verificationStatus: string) {
     if (!completedOnboarding || verificationStatus === "Needs Changes") {
       toast.info("Please complete your onboarding profile.");
-      router.push(roleOnboardingPaths[userRole] || "/onboarding");
+      router.push(ROLE_ONBOARDING[userRole] || "/onboarding");
       return;
     }
 

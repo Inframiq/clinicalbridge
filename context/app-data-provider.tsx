@@ -187,7 +187,9 @@ interface AppDataContextValue {
   reviewDoctorDocument: (
     id: string,
     docKey: string,
-    decision: Exclude<DocumentReviewStatus, "pending">
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    /** Required when `decision` is "rejected": why the super admin rejected this document. */
+    reason?: string
   ) => Promise<void>;
   /** Records that a super admin opened this document in the full-screen viewer. No-op if already viewed. */
   markDoctorDocumentViewed: (id: string, docKey: string) => Promise<void>;
@@ -242,7 +244,9 @@ interface AppDataContextValue {
   reviewFacilityDocument: (
     id: string,
     docKey: string,
-    decision: Exclude<DocumentReviewStatus, "pending">
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    /** Required when `decision` is "rejected": why the super admin rejected this document. */
+    reason?: string
   ) => Promise<void>;
   /** Facility counterpart of {@link markDoctorDocumentViewed}. */
   markFacilityDocumentViewed: (id: string, docKey: string) => Promise<void>;
@@ -415,9 +419,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) =>
         applyRealtimeChange(setNotifications, payload, mapNotificationRow)
       )
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status !== "SUBSCRIBED" && status !== "CLOSED")
-          reportSupabase("AppDataProvider.realtime", `channel status: ${status}`);
+          reportSupabase("AppDataProvider.realtime", err ?? `channel status: ${status}`);
       });
 
     return () => {
@@ -747,7 +751,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reviewDoctorDocument = React.useCallback(
-    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+    async (id: string, docKey: string, decision: "approved" | "rejected", reason?: string) => {
       let prevDoctors: Doctor[] = [];
       let profileId: string | undefined;
       let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
@@ -761,7 +765,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           if (!current) return d;
           const updatedDocs: Record<string, UploadedFileMetadata> = {
             ...docs,
-            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+            [docKey]: {
+              ...current,
+              status: decision,
+              reviewedAt: new Date().toISOString(),
+              rejectionReason: decision === "rejected" ? reason : undefined,
+            },
           };
           nextDocuments = updatedDocs;
           const entries = Object.values(updatedDocs);
@@ -1169,7 +1178,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reviewFacilityDocument = React.useCallback(
-    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+    async (id: string, docKey: string, decision: "approved" | "rejected", reason?: string) => {
       let prevFacilities: Facility[] = [];
       let profileId: string | undefined;
       let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
@@ -1183,7 +1192,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           if (!current) return f;
           const updatedDocs: Record<string, UploadedFileMetadata> = {
             ...docs,
-            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+            [docKey]: {
+              ...current,
+              status: decision,
+              reviewedAt: new Date().toISOString(),
+              rejectionReason: decision === "rejected" ? reason : undefined,
+            },
           };
           nextDocuments = updatedDocs;
           const entries = Object.values(updatedDocs);

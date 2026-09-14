@@ -60,3 +60,11 @@ export const ROLE_ORDER: UserRole[] = [
 export const ROLE_HOME: Record<UserRole, string> = Object.fromEntries(
   ROLE_ORDER.map((role) => [role, ROLE_CONFIG[role].homeHref])
 ) as Record<UserRole, string>;
+
+/** Where an account of this role goes to complete/resume onboarding. */
+export const ROLE_ONBOARDING: Record<UserRole, string> = {
+  hospital: "/onboarding/hospital",
+  working_doctor: "/onboarding/working-doctor",
+  locum_tenens: "/onboarding/locum-tenens",
+  super_admin: "/super-admin/dashboard",
+};

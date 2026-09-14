@@ -127,9 +127,9 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         }
       )
       .on("postgres_changes", { event: "*", schema: "public", table: "message_threads" }, refresh)
-      .subscribe((status) => {
+      .subscribe((status, err) => {
         if (status !== "SUBSCRIBED" && status !== "CLOSED")
-          reportSupabase("MessagesProvider.realtime", `channel status: ${status}`);
+          reportSupabase("MessagesProvider.realtime", err ?? `channel status: ${status}`);
       });
 
     return () => {
