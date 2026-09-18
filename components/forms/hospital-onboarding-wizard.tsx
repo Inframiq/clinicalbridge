@@ -23,7 +23,6 @@ import { Stepper } from "@/components/forms/stepper";
 import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { useAuthRole } from "@/context/auth-provider";
 import { useFacilities } from "@/hooks/use-facilities";
-import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
@@ -99,17 +98,17 @@ export function HospitalOnboardingWizard() {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
-    "hospital_onboarding",
-    initialDefaults
-  );
-
+  // Deliberately NOT persisted anywhere client-side (no localStorage, no
+  // autosave draft): a fixed or reused browser-storage key was previously
+  // leaking one registrant's in-progress answers into the next person's
+  // onboarding form on the same browser. Form state now lives only in
+  // react-hook-form's in-memory state and is gone the moment this component
+  // unmounts (refresh, navigation away, or logout).
   const {
     register,
     control,
     trigger,
     watch,
-    reset,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
@@ -119,25 +118,13 @@ export function HospitalOnboardingWizard() {
 
   const values = watch();
 
+  // Resuming after "Needs Changes" re-fetches already-uploaded documents from
+  // Supabase (server-side, scoped to this account by `profile.id`) so the
+  // registrant doesn't have to re-upload every document (including ones a
+  // super admin already approved) just to fix the one that was rejected.
+  // This is account data pulled from the database, not a client-side cache.
   useEffect(() => {
-    const subscription = watch((value) => {
-      saveDraft(value as Partial<FormValues>);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, saveDraft]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      reset(autosavedData);
-    }
-  }, [isHydrated, autosavedData, reset]);
-
-  // Resuming after "Needs Changes" clears the local autosave draft the moment
-  // the original application was submitted, so without this the applicant
-  // would have to re-upload every document (including ones a super admin
-  // already approved) just to fix the one that was rejected.
-  useEffect(() => {
-    if (!isHydrated || !profile?.id) return;
+    if (!profile?.id) return;
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = facilities.find((f) => f.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
@@ -147,7 +134,7 @@ export function HospitalOnboardingWizard() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, profile?.id]);
+  }, [profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -265,7 +252,6 @@ export function HospitalOnboardingWizard() {
           return;
         }
 
-        clearDraft();
         toast.success("Registration submitted! Your hospital is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -397,18 +383,35 @@ export function HospitalOnboardingWizard() {
                       />
                     );
                     return (
-                      <div
-                        key={doc.key}
-                        className="flex items-center justify-between rounded-lg border border-border p-3"
-                      >
-                        <span className="flex items-center gap-2 text-sm">
-                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
-                        </span>
-                        {isRejected ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1 text-xs font-medium text-destructive">
-                              <ShieldX className="size-3.5" /> Rejected — re-upload
+                      <div key={doc.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2 text-sm">
+                            <FileText className="size-4 text-muted-foreground" /> {doc.label}
+                          </span>
+                          {isRejected ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+                                <ShieldX className="size-3.5" /> Rejected — re-upload
+                              </span>
+                              <label className="cursor-pointer">
+                                <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                  <span>
+                                    {isUploading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Upload className="size-3.5" />
+                                    )}
+                                    Replace
+                                  </span>
+                                </Button>
+                                {pickerInput}
+                              </label>
+                            </div>
+                          ) : uploaded ? (
+                            <span className="flex items-center gap-1 text-xs font-medium text-success">
+                              <CheckCircle2 className="size-3.5" /> {uploaded.name}
                             </span>
+                          ) : (
                             <label className="cursor-pointer">
                               <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
                                 <span>
@@ -417,30 +420,18 @@ export function HospitalOnboardingWizard() {
                                   ) : (
                                     <Upload className="size-3.5" />
                                   )}
-                                  Replace
+                                  Upload
                                 </span>
                               </Button>
                               {pickerInput}
                             </label>
-                          </div>
-                        ) : uploaded ? (
-                          <span className="flex items-center gap-1 text-xs font-medium text-success">
-                            <CheckCircle2 className="size-3.5" /> {uploaded.name}
-                          </span>
-                        ) : (
-                          <label className="cursor-pointer">
-                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
-                              <span>
-                                {isUploading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="size-3.5" />
-                                )}
-                                Upload
-                              </span>
-                            </Button>
-                            {pickerInput}
-                          </label>
+                          )}
+                        </div>
+                        {isRejected && uploaded?.rejectionReason && (
+                          <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                            <span className="font-medium">Reason: </span>
+                            {uploaded.rejectionReason}
+                          </p>
                         )}
                       </div>
                     );

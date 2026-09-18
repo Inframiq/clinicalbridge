@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 
@@ -123,12 +124,59 @@ function DocumentMedia({
   );
 }
 
+/**
+ * Inline form that appears in place of the Approve/Reject buttons once
+ * "Reject" is clicked — a rejection isn't committed until a reason is typed,
+ * so the applicant always finds out what to fix.
+ */
+function RejectReasonPanel({
+  reason,
+  onReasonChange,
+  onConfirm,
+  onCancel,
+}: {
+  reason: string;
+  onReasonChange: (value: string) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="w-full space-y-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3">
+      <label htmlFor="reject-reason" className="text-xs font-medium text-foreground">
+        Reason for rejection *
+      </label>
+      <Textarea
+        id="reject-reason"
+        value={reason}
+        onChange={(e) => onReasonChange(e.target.value)}
+        placeholder="e.g. Photo is blurry, license has expired, wrong document type..."
+        rows={2}
+        autoFocus
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="destructive"
+          disabled={!reason.trim()}
+          onClick={onConfirm}
+        >
+          <ShieldX className="size-3.5" /> Confirm Rejection
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function DecisionButtons({
   status,
   readOnly,
   canApprove,
   onApprove,
-  onReject,
+  onStartReject,
   size = "sm",
 }: {
   status: DocumentReviewStatus;
@@ -136,7 +184,7 @@ function DecisionButtons({
   /** False when the file can't actually be opened here — approving something you can't view isn't a real review. */
   canApprove: boolean;
   onApprove: () => void;
-  onReject: () => void;
+  onStartReject: () => void;
   size?: "sm" | "default";
 }) {
   return (
@@ -147,7 +195,7 @@ function DecisionButtons({
         variant="outline"
         className="text-destructive hover:text-destructive"
         disabled={readOnly || status === "rejected"}
-        onClick={onReject}
+        onClick={onStartReject}
       >
         <ShieldX className="size-3.5" /> Reject
       </Button>
@@ -170,9 +218,15 @@ function FullscreenDocumentViewer({
   status,
   reviewedAt,
   viewedAt,
+  rejectionReason,
   readOnly,
   onApprove,
-  onReject,
+  confirmingReject,
+  rejectReason,
+  onRejectReasonChange,
+  onStartReject,
+  onConfirmReject,
+  onCancelReject,
   onClose,
 }: {
   label: string;
@@ -180,9 +234,15 @@ function FullscreenDocumentViewer({
   status: DocumentReviewStatus;
   reviewedAt?: string;
   viewedAt?: string;
+  rejectionReason?: string;
   readOnly: boolean;
   onApprove: () => void;
-  onReject: () => void;
+  confirmingReject: boolean;
+  rejectReason: string;
+  onRejectReasonChange: (value: string) => void;
+  onStartReject: () => void;
+  onConfirmReject: () => void;
+  onCancelReject: () => void;
   onClose: () => void;
 }) {
   const meta = STATUS_META[status];
@@ -236,21 +296,38 @@ function FullscreenDocumentViewer({
         <DocumentMedia file={file} label={label} kind={kind} mediaClassName="mx-auto h-full max-h-full w-full rounded-md" />
       </div>
 
-      <div className="flex shrink-0 flex-col gap-3 border-t border-border px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <p className="text-xs text-muted-foreground">
-          {status === "pending"
-            ? "Approve or reject this document to mark it verified."
-            : `${status === "approved" ? "Approved" : "Rejected"}${
-                reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
-              }`}
-        </p>
-        <DecisionButtons
-          status={status}
-          readOnly={readOnly}
-          canApprove={kind.hasUrl}
-          onApprove={onApprove}
-          onReject={onReject}
-        />
+      <div className="flex shrink-0 flex-col gap-3 border-t border-border px-4 py-3 sm:px-6">
+        {status === "rejected" && rejectionReason && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <span className="font-medium">Reason given: </span>
+            {rejectionReason}
+          </p>
+        )}
+        {confirmingReject ? (
+          <RejectReasonPanel
+            reason={rejectReason}
+            onReasonChange={onRejectReasonChange}
+            onConfirm={onConfirmReject}
+            onCancel={onCancelReject}
+          />
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              {status === "pending"
+                ? "Approve or reject this document to mark it verified."
+                : `${status === "approved" ? "Approved" : "Rejected"}${
+                    reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
+                  }`}
+            </p>
+            <DecisionButtons
+              status={status}
+              readOnly={readOnly}
+              canApprove={kind.hasUrl}
+              onApprove={onApprove}
+              onStartReject={onStartReject}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -262,6 +339,7 @@ export function DocumentPreviewCard({
   status,
   reviewedAt,
   viewedAt,
+  rejectionReason,
   readOnly,
   onApprove,
   onReject,
@@ -272,19 +350,56 @@ export function DocumentPreviewCard({
   status: DocumentReviewStatus;
   reviewedAt?: string;
   viewedAt?: string;
+  rejectionReason?: string;
   readOnly: boolean;
   onApprove: () => void;
-  onReject: () => void;
+  /** Called only once a reason has been typed and confirmed. */
+  onReject: (reason: string) => void;
   onView: () => void;
 }) {
   const [open, setOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [confirmingReject, setConfirmingReject] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   const meta = STATUS_META[status];
   const kind = classifyFile(file);
+
+  // The inline preview defaults open, so the document is already on screen
+  // the moment this card mounts — that counts as "accessed" just as much as
+  // explicitly opening the full-screen viewer. Re-fires whenever the preview
+  // is toggled back open after being hidden.
+  useEffect(() => {
+    if (open) onView();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function openFullscreen() {
     setFullscreen(true);
     onView();
+  }
+
+  function closeFullscreen() {
+    setFullscreen(false);
+    setConfirmingReject(false);
+    setRejectReason("");
+  }
+
+  function startReject() {
+    setConfirmingReject(true);
+    setRejectReason("");
+  }
+
+  function cancelReject() {
+    setConfirmingReject(false);
+    setRejectReason("");
+  }
+
+  function confirmReject() {
+    const trimmed = rejectReason.trim();
+    if (!trimmed) return;
+    onReject(trimmed);
+    setConfirmingReject(false);
+    setRejectReason("");
   }
 
   return (
@@ -347,21 +462,38 @@ export function DocumentPreviewCard({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border p-3">
-        <p className="text-xs text-muted-foreground">
-          {status === "pending"
-            ? "Approve or reject this document to mark it verified."
-            : `${status === "approved" ? "Approved" : "Rejected"}${
-                reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
-              }`}
-        </p>
-        <DecisionButtons
-          status={status}
-          readOnly={readOnly}
-          canApprove={kind.hasUrl}
-          onApprove={onApprove}
-          onReject={onReject}
-        />
+      <div className="flex flex-col gap-3 border-t border-border p-3">
+        {status === "rejected" && rejectionReason && (
+          <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            <span className="font-medium">Reason given: </span>
+            {rejectionReason}
+          </p>
+        )}
+        {confirmingReject ? (
+          <RejectReasonPanel
+            reason={rejectReason}
+            onReasonChange={setRejectReason}
+            onConfirm={confirmReject}
+            onCancel={cancelReject}
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              {status === "pending"
+                ? "Approve or reject this document to mark it verified."
+                : `${status === "approved" ? "Approved" : "Rejected"}${
+                    reviewedAt ? ` · ${new Date(reviewedAt).toLocaleString()}` : ""
+                  }`}
+            </p>
+            <DecisionButtons
+              status={status}
+              readOnly={readOnly}
+              canApprove={kind.hasUrl}
+              onApprove={onApprove}
+              onStartReject={startReject}
+            />
+          </div>
+        )}
       </div>
 
       {fullscreen &&
@@ -373,10 +505,16 @@ export function DocumentPreviewCard({
             status={status}
             reviewedAt={reviewedAt}
             viewedAt={viewedAt}
+            rejectionReason={rejectionReason}
             readOnly={readOnly}
             onApprove={onApprove}
-            onReject={onReject}
-            onClose={() => setFullscreen(false)}
+            confirmingReject={confirmingReject}
+            rejectReason={rejectReason}
+            onRejectReasonChange={setRejectReason}
+            onStartReject={startReject}
+            onConfirmReject={confirmReject}
+            onCancelReject={cancelReject}
+            onClose={closeFullscreen}
           />,
           document.body
         )}

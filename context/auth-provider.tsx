@@ -6,6 +6,7 @@ import { useLocalStorageState, clearAllLocalStorageState } from "@/hooks/use-loc
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { reportSupabase } from "@/lib/supabase/log";
+import { SELF_SERVE_ROLES } from "@/lib/roles";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 export interface UserProfile {
@@ -97,8 +98,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           reportSupabase("auth.fetchProfile", error);
         }
 
-        // If profile doesn't exist yet, insert a fallback profile record
-        const fallbackRole = userRole || "locum_tenens";
+        // If profile doesn't exist yet, insert a fallback profile record.
+        // `userRole` traces back to `auth.users.user_metadata.role`, which the
+        // signed-in user controls (it's whatever they sent at signup) - never
+        // trust it for a privileged role. This mirrors the same allowlist the
+        // `handle_new_user` DB trigger enforces server-side, so this client
+        // fallback can't be used to insert a row the trigger would have refused.
+        const fallbackRole =
+          userRole && (SELF_SERVE_ROLES as string[]).includes(userRole) ? userRole : "locum_tenens";
         const fallbackEmail = userEmail || "";
         const fallbackName = fullName || fallbackEmail.split("@")[0] || "User";
 
@@ -253,7 +260,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          if (expectedRole && profile && profile.role !== expectedRole) {
+          // The designated super-admin account has no dedicated login tile (see
+          // login-form.tsx) - it signs in through whichever of the three regular
+          // role tiles was clicked. Its real `profile.role` (set server-side,
+          // never client-controlled) always wins over whatever tile was
+          // selected, so skip the mismatch check in that one case.
+          if (expectedRole && profile && profile.role !== expectedRole && profile.role !== "super_admin") {
             const roleLabels: Record<UserRole, string> = {
               hospital: "Hospital / Clinic",
               working_doctor: "Working Doctor",

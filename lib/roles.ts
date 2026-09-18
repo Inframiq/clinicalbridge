@@ -57,6 +57,25 @@ export const ROLE_ORDER: UserRole[] = [
   "super_admin",
 ];
 
+/**
+ * Roles a visitor may pick for themselves at signup. `super_admin` is
+ * deliberately excluded — it must only ever be granted by an existing admin,
+ * never self-selected. Use this (not `ROLE_ORDER`) anywhere a role comes from
+ * user input (a signup form, a `?role=` query param) rather than from an
+ * already-authenticated profile.
+ */
+export const SELF_SERVE_ROLES: UserRole[] = ROLE_ORDER.filter((r) => r !== "super_admin");
+
+/**
+ * The one email the `handle_new_user` DB trigger (migration 018) force-
+ * assigns `super_admin` to, regardless of which self-serve role was
+ * requested. Mirrored here only so the client can make an immediate,
+ * network-free redirect decision right after signup - the actual role
+ * assignment is enforced server-side and this constant has no authority
+ * of its own.
+ */
+export const SUPER_ADMIN_EMAIL = "chitrothusanjita@gmail.com";
+
 export const ROLE_HOME: Record<UserRole, string> = Object.fromEntries(
   ROLE_ORDER.map((role) => [role, ROLE_CONFIG[role].homeHref])
 ) as Record<UserRole, string>;

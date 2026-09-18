@@ -20,7 +20,8 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, ROLE_ONBOARDING, ROLE_ORDER } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_ONBOARDING, SELF_SERVE_ROLES, SUPER_ADMIN_EMAIL } from "@/lib/roles";
+import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -73,8 +74,14 @@ function MicrosoftIcon() {
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const defaultRole = (searchParams.get("role") as UserRole) || "hospital";
-  
+  // `?role=` is user input - never trust it past `SELF_SERVE_ROLES`. In particular
+  // it must never be able to preset `role` to "super_admin", which only an existing
+  // admin may grant, not something a visitor can pick for themselves at signup.
+  function selfServeRole(value: string | null): UserRole | null {
+    return value && (SELF_SERVE_ROLES as string[]).includes(value) ? (value as UserRole) : null;
+  }
+  const defaultRole = selfServeRole(searchParams.get("role")) || "hospital";
+
   const { signUpWithSupabase, signInWithOAuth, refreshProfile } = useAuthRole();
   const [role, setRole] = useState<UserRole>(defaultRole);
   const [showPassword, setShowPassword] = useState(false);
@@ -86,8 +93,9 @@ export function SignupForm() {
   const [syncedRoleParam, setSyncedRoleParam] = useState(roleParam);
   if (roleParam !== syncedRoleParam) {
     setSyncedRoleParam(roleParam);
-    if (roleParam && ROLE_CONFIG[roleParam as UserRole]) {
-      setRole(roleParam as UserRole);
+    const nextRole = selfServeRole(roleParam);
+    if (nextRole) {
+      setRole(nextRole);
     }
   }
 
@@ -130,9 +138,27 @@ export function SignupForm() {
       }
 
       if (user) {
-        await refreshProfile();
-        toast.success("Account created successfully!");
-        router.push(ROLE_ONBOARDING[role] || "/onboarding");
+        // The designated super-admin email is force-assigned "super_admin"
+        // server-side (see migration 018) regardless of which tile was
+        // picked above. That's already decided by the time signUp resolves,
+        // so redirect off this client-known constant instead of waiting on
+        // an extra profile fetch - `refreshProfile` still runs, just in the
+        // background, since the AuthProvider's own auth-state listener will
+        // sync the session anyway and nothing here needs to block on it.
+        const isSuperAdmin = data.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+        const targetRole: UserRole = isSuperAdmin ? "super_admin" : role;
+        void refreshProfile();
+
+        // The super-admin target is an AppShell dashboard, which only shows
+        // the toast once it's actually rendered (see app-shell.tsx) - for
+        // every other role this lands on an onboarding wizard instead, so
+        // the toast can just show right away.
+        if (isSuperAdmin) {
+          queuePendingToast("Account created successfully!");
+        } else {
+          toast.success("Account created successfully!");
+        }
+        router.push(ROLE_ONBOARDING[targetRole] || "/onboarding");
         return;
       }
     }
@@ -158,8 +184,7 @@ export function SignupForm() {
       <div className="mb-6">
         <p className="mb-2.5 text-xs font-medium text-muted-foreground">I want to register as</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {ROLE_ORDER.map((value) => {
-            if (value === "super_admin") return null;
+          {SELF_SERVE_ROLES.map((value) => {
             const config = ROLE_CONFIG[value];
             const Icon = config.icon;
             const isActive = role === value;

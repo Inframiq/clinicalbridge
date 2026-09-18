@@ -35,12 +35,12 @@ import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
-import { useAutosave } from "@/hooks/use-autosave";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
+import { MEDICAL_SPECIALTIES } from "@/lib/config/specialties";
 import type { Doctor } from "@/types";
 
 const MIN_DOB = isoDateYearsAgo(120);
@@ -188,18 +188,19 @@ export function OnboardingWizard() {
     bls: true,
   });
 
-  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
-    "locum_tenens_onboarding",
-    initialDefaults
-  );
-
+  // Deliberately NOT persisted anywhere client-side (no localStorage, no
+  // autosave draft): this form collects bank account/routing numbers and
+  // other sensitive PII, and a fixed or reused browser-storage key was
+  // previously leaking one applicant's in-progress answers into the next
+  // person's onboarding form on the same browser. Form state now lives only
+  // in react-hook-form's in-memory state and is gone the moment this
+  // component unmounts (refresh, navigation away, or logout).
   const {
     register,
     control,
     trigger,
     watch,
     setValue,
-    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -208,26 +209,13 @@ export function OnboardingWizard() {
 
   const values = watch();
 
-  // Save changes to local storage draft
+  // Resuming after "Needs Changes" re-fetches already-uploaded documents from
+  // Supabase (server-side, scoped to this account by `profile.id`) so the
+  // applicant doesn't have to re-upload every document (including ones a
+  // super admin already approved) just to fix the one that was rejected.
+  // This is account data pulled from the database, not a client-side cache.
   useEffect(() => {
-    const subscription = watch((value) => {
-      saveDraft(value as Partial<FormValues>);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, saveDraft]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      reset(autosavedData);
-    }
-  }, [isHydrated, autosavedData, reset]);
-
-  // Resuming after "Needs Changes" clears the local autosave draft the moment
-  // the original application was submitted, so without this the applicant
-  // would have to re-upload every document (including ones a super admin
-  // already approved) just to fix the one that was rejected.
-  useEffect(() => {
-    if (!isHydrated || !profile?.id) return;
+    if (!profile?.id) return;
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = doctors.find((d) => d.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
@@ -236,12 +224,12 @@ export function OnboardingWizard() {
         shouldValidate: false,
       });
     }
-    // Only ever re-run this off `profile.id` becoming available / hydration
-    // finishing — `doctors` and `uploadedFiles` change as a *result* of this
-    // effect (or of uploads), so including them would fight the "only prefill
-    // once, when empty" guard above.
+    // Only ever re-run this off `profile.id` becoming available —
+    // `doctors` and `uploadedFiles` change as a *result* of this effect (or
+    // of uploads), so including them would fight the "only prefill once,
+    // when empty" guard above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, profile?.id]);
+  }, [profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -379,7 +367,6 @@ export function OnboardingWizard() {
           return;
         }
 
-        clearDraft();
         toast.success("Application submitted! Your profile is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -497,13 +484,11 @@ export function OnboardingWizard() {
                                 <SelectValue placeholder="Select specialty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {["Emergency Medicine", "Internal Medicine", "Pediatrics", "Orthopedics", "Critical Care"].map(
-                                  (s) => (
-                                    <SelectItem key={s} value={s}>
-                                      {s}
-                                    </SelectItem>
-                                  )
-                                )}
+                                {MEDICAL_SPECIALTIES.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {s}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           )}
@@ -657,18 +642,35 @@ export function OnboardingWizard() {
                       />
                     );
                     return (
-                      <div
-                        key={doc.key}
-                        className="flex items-center justify-between rounded-lg border border-border p-3"
-                      >
-                        <span className="flex items-center gap-2 text-sm">
-                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
-                        </span>
-                        {isRejected ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1 text-xs font-medium text-destructive">
-                              <ShieldX className="size-3.5" /> Rejected — re-upload
+                      <div key={doc.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2 text-sm">
+                            <FileText className="size-4 text-muted-foreground" /> {doc.label}
+                          </span>
+                          {isRejected ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+                                <ShieldX className="size-3.5" /> Rejected — re-upload
+                              </span>
+                              <label className="cursor-pointer">
+                                <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                  <span>
+                                    {isUploading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Upload className="size-3.5" />
+                                    )}
+                                    Replace
+                                  </span>
+                                </Button>
+                                {pickerInput}
+                              </label>
+                            </div>
+                          ) : uploaded ? (
+                            <span className="flex items-center gap-1 text-xs font-medium text-success">
+                              <CheckCircle2 className="size-3.5" /> {uploaded.name}
                             </span>
+                          ) : (
                             <label className="cursor-pointer">
                               <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
                                 <span>
@@ -677,30 +679,18 @@ export function OnboardingWizard() {
                                   ) : (
                                     <Upload className="size-3.5" />
                                   )}
-                                  Replace
+                                  Upload
                                 </span>
                               </Button>
                               {pickerInput}
                             </label>
-                          </div>
-                        ) : uploaded ? (
-                          <span className="flex items-center gap-1 text-xs font-medium text-success">
-                            <CheckCircle2 className="size-3.5" /> {uploaded.name}
-                          </span>
-                        ) : (
-                          <label className="cursor-pointer">
-                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
-                              <span>
-                                {isUploading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="size-3.5" />
-                                )}
-                                Upload
-                              </span>
-                            </Button>
-                            {pickerInput}
-                          </label>
+                          )}
+                        </div>
+                        {isRejected && uploaded?.rejectionReason && (
+                          <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                            <span className="font-medium">Reason: </span>
+                            {uploaded.rejectionReason}
+                          </p>
                         )}
                       </div>
                     );

@@ -21,7 +21,8 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, ROLE_HOME, ROLE_ONBOARDING, ROLE_ORDER } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_HOME, ROLE_ONBOARDING, SELF_SERVE_ROLES } from "@/lib/roles";
+import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -106,7 +107,11 @@ export function LoginForm() {
       return;
     }
 
-    toast.success("Signed in successfully");
+    // Queued instead of shown here - the redirect below only starts the
+    // navigation, it doesn't wait for the dashboard to actually render, so
+    // an immediate toast would pop up mid-transition. AppShell shows this
+    // once the destination dashboard is actually on screen.
+    queuePendingToast("Signed in successfully");
     router.push(ROLE_HOME[userRole]);
   }
 
@@ -146,8 +151,15 @@ export function LoginForm() {
 
       <div className="mb-6">
         <p className="mb-2.5 text-xs font-medium text-muted-foreground">I am signing in as</p>
+        {/*
+          Super Admin has no tile here and can't be self-selected - there is no
+          standalone super-admin login. The designated super-admin account signs
+          in through any of these three tiles and is routed to the super-admin
+          dashboard automatically once its profile role comes back as
+          "super_admin" (see the mismatch bypass in auth-provider.tsx).
+        */}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {ROLE_ORDER.map((value) => {
+          {SELF_SERVE_ROLES.map((value) => {
             const config = ROLE_CONFIG[value];
             const Icon = config.icon;
             const isActive = role === value;

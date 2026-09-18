@@ -24,12 +24,12 @@ import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
-import { useAutosave } from "@/hooks/use-autosave";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
+import { MEDICAL_SPECIALTIES } from "@/lib/config/specialties";
 
 const MIN_DOB = isoDateYearsAgo(120);
 const MAX_DOB = todayIsoDate();
@@ -52,6 +52,7 @@ const schema = z.object({
     .min(1, "Required")
     .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   specialty: z.string().min(1, "Required"),
+  subSpecialty: z.string().optional(),
   npiNumber: z
     .string()
     .min(1, "Required")
@@ -107,6 +108,7 @@ const initialDefaults: FormValues = {
   phone: "",
   dob: "",
   specialty: "",
+  subSpecialty: "",
   npiNumber: "",
   hospitalAffiliation: "",
   licenseNumber: "",
@@ -131,17 +133,17 @@ export function WorkingDoctorOnboardingWizard() {
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
-    "working_doctor_onboarding",
-    initialDefaults
-  );
-
+  // Deliberately NOT persisted anywhere client-side (no localStorage, no
+  // autosave draft): a fixed or reused browser-storage key was previously
+  // leaking one applicant's in-progress answers into the next person's
+  // onboarding form on the same browser. Form state now lives only in
+  // react-hook-form's in-memory state and is gone the moment this component
+  // unmounts (refresh, navigation away, or logout).
   const {
     register,
     control,
     trigger,
     watch,
-    reset,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
@@ -151,25 +153,13 @@ export function WorkingDoctorOnboardingWizard() {
 
   const values = watch();
 
+  // Resuming after "Needs Changes" re-fetches already-uploaded documents from
+  // Supabase (server-side, scoped to this account by `profile.id`) so the
+  // applicant doesn't have to re-upload every document (including ones a
+  // super admin already approved) just to fix the one that was rejected.
+  // This is account data pulled from the database, not a client-side cache.
   useEffect(() => {
-    const subscription = watch((value) => {
-      saveDraft(value as Partial<FormValues>);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, saveDraft]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      reset(autosavedData);
-    }
-  }, [isHydrated, autosavedData, reset]);
-
-  // Resuming after "Needs Changes" clears the local autosave draft the moment
-  // the original application was submitted, so without this the applicant
-  // would have to re-upload every document (including ones a super admin
-  // already approved) just to fix the one that was rejected.
-  useEffect(() => {
-    if (!isHydrated || !profile?.id) return;
+    if (!profile?.id) return;
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = doctors.find((d) => d.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
@@ -179,7 +169,7 @@ export function WorkingDoctorOnboardingWizard() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, profile?.id]);
+  }, [profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -248,6 +238,7 @@ export function WorkingDoctorOnboardingWizard() {
             first_name: values.firstName,
             last_name: values.lastName,
             specialty: values.specialty,
+            sub_specialty: values.subSpecialty || null,
             license_number: values.licenseNumber,
             license_expiry: formattedExpiry,
             npi_number: values.npiNumber,
@@ -294,6 +285,7 @@ export function WorkingDoctorOnboardingWizard() {
               email: values.email,
               phone: values.phone,
               specialty: values.specialty,
+              subSpecialty: values.subSpecialty || undefined,
               licenseNumber: values.licenseNumber,
               licenseExpiry: values.licenseExpiry,
               npiNumber: values.npiNumber,
@@ -308,7 +300,6 @@ export function WorkingDoctorOnboardingWizard() {
           return;
         }
 
-        clearDraft();
         toast.success("Application submitted! Your working doctor application is waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -395,13 +386,11 @@ export function WorkingDoctorOnboardingWizard() {
                                 <SelectValue placeholder="Select specialty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {["Emergency Medicine", "Internal Medicine", "Pediatrics", "Orthopedics", "Critical Care"].map(
-                                  (s) => (
-                                    <SelectItem key={s} value={s}>
-                                      {s}
-                                    </SelectItem>
-                                  )
-                                )}
+                                {MEDICAL_SPECIALTIES.map((s) => (
+                                  <SelectItem key={s} value={s}>
+                                    {s}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           )}
@@ -417,13 +406,21 @@ export function WorkingDoctorOnboardingWizard() {
                       </FieldContent>
                     </Field>
                   </div>
-                  <Field data-invalid={!!errors.hospitalAffiliation}>
-                    <FieldLabel htmlFor="hospitalAffiliation">Primary Hospital Affiliation *</FieldLabel>
-                    <FieldContent>
-                      <Input id="hospitalAffiliation" placeholder="St. Jude General Hospital" {...register("hospitalAffiliation")} />
-                      <FieldError errors={[errors.hospitalAffiliation]} />
-                    </FieldContent>
-                  </Field>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <Field>
+                      <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
+                      <FieldContent>
+                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" {...register("subSpecialty")} />
+                      </FieldContent>
+                    </Field>
+                    <Field data-invalid={!!errors.hospitalAffiliation}>
+                      <FieldLabel htmlFor="hospitalAffiliation">Primary Hospital Affiliation *</FieldLabel>
+                      <FieldContent>
+                        <Input id="hospitalAffiliation" placeholder="St. Jude General Hospital" {...register("hospitalAffiliation")} />
+                        <FieldError errors={[errors.hospitalAffiliation]} />
+                      </FieldContent>
+                    </Field>
+                  </div>
                 </>
               )}
 
@@ -475,18 +472,35 @@ export function WorkingDoctorOnboardingWizard() {
                       />
                     );
                     return (
-                      <div
-                        key={doc.key}
-                        className="flex items-center justify-between rounded-lg border border-border p-3"
-                      >
-                        <span className="flex items-center gap-2 text-sm">
-                          <FileText className="size-4 text-muted-foreground" /> {doc.label}
-                        </span>
-                        {isRejected ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1 text-xs font-medium text-destructive">
-                              <ShieldX className="size-3.5" /> Rejected — re-upload
+                      <div key={doc.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-2 text-sm">
+                            <FileText className="size-4 text-muted-foreground" /> {doc.label}
+                          </span>
+                          {isRejected ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-1 text-xs font-medium text-destructive">
+                                <ShieldX className="size-3.5" /> Rejected — re-upload
+                              </span>
+                              <label className="cursor-pointer">
+                                <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                  <span>
+                                    {isUploading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Upload className="size-3.5" />
+                                    )}
+                                    Replace
+                                  </span>
+                                </Button>
+                                {pickerInput}
+                              </label>
+                            </div>
+                          ) : uploaded ? (
+                            <span className="flex items-center gap-1 text-xs font-medium text-success">
+                              <CheckCircle2 className="size-3.5" /> {uploaded.name}
                             </span>
+                          ) : (
                             <label className="cursor-pointer">
                               <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
                                 <span>
@@ -495,30 +509,18 @@ export function WorkingDoctorOnboardingWizard() {
                                   ) : (
                                     <Upload className="size-3.5" />
                                   )}
-                                  Replace
+                                  Upload
                                 </span>
                               </Button>
                               {pickerInput}
                             </label>
-                          </div>
-                        ) : uploaded ? (
-                          <span className="flex items-center gap-1 text-xs font-medium text-success">
-                            <CheckCircle2 className="size-3.5" /> {uploaded.name}
-                          </span>
-                        ) : (
-                          <label className="cursor-pointer">
-                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
-                              <span>
-                                {isUploading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="size-3.5" />
-                                )}
-                                Upload
-                              </span>
-                            </Button>
-                            {pickerInput}
-                          </label>
+                          )}
+                        </div>
+                        {isRejected && uploaded?.rejectionReason && (
+                          <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                            <span className="font-medium">Reason: </span>
+                            {uploaded.rejectionReason}
+                          </p>
                         )}
                       </div>
                     );

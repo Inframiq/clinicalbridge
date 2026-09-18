@@ -20,6 +20,8 @@ export interface UploadedFileMetadata {
   reviewedAt?: string;
   /** Set the first time a super admin opens this document in the full-screen viewer. */
   viewedAt?: string;
+  /** Required free-text reason a super admin gave when rejecting this document. */
+  rejectionReason?: string;
 }
 
 /**

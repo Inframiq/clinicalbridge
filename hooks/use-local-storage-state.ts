@@ -82,15 +82,21 @@ export function useLocalStorageState<T>(key: string, initialValue: T, serverValu
 }
 
 /**
- * Wipes every `lt-*` cache key (including `lt-auth-session`) and notifies
- * subscribers. Called on logout so the next sign-in on this browser starts
- * from empty state instead of briefly showing the previous account's cached
- * shifts/doctors/facilities/etc. while the post-login fetch is in flight -
- * or indefinitely, for any slice whose fetch happens to fail.
+ * Wipes every `lt-*` cache key (including `lt-auth-session`) plus every
+ * `autosave_*` onboarding-wizard draft, and notifies subscribers. Called on
+ * logout so the next sign-in on this browser starts from empty state instead
+ * of briefly showing the previous account's cached shifts/doctors/facilities/
+ * etc. while the post-login fetch is in flight - or indefinitely, for any
+ * slice whose fetch happens to fail. `autosave_*` drafts hold unsubmitted
+ * onboarding PII (license/NPI numbers, bank account and routing numbers), so
+ * leaving them behind for the next sign-in on a shared browser would leak the
+ * previous applicant's confidential data into the next person's form.
  */
 export function clearAllLocalStorageState() {
   if (typeof window === "undefined") return;
-  const keys = Object.keys(window.localStorage).filter((k) => k.startsWith("lt-"));
+  const keys = Object.keys(window.localStorage).filter(
+    (k) => k.startsWith("lt-") || k.startsWith("autosave_")
+  );
   for (const key of keys) {
     window.localStorage.removeItem(key);
     window.dispatchEvent(new Event(eventName(key)));
