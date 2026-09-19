@@ -13,6 +13,17 @@ import { Separator } from "@/components/ui/separator";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
 import { useFacilities } from "@/hooks/use-facilities";
+import { useNotificationPreferences } from "@/hooks/use-notification-preferences";
+import { emailField, optionalPhoneField, shortTextField } from "@/lib/validation";
+import { z } from "zod";
+
+const schema = z.object({
+  name: shortTextField(150),
+  address: z.string().trim().max(200, "Must be 200 characters or fewer").optional().or(z.literal("")),
+  city: shortTextField(80),
+  phone: optionalPhoneField,
+  email: emailField,
+});
 
 const notificationPrefs = [
   { id: "new-applications", label: "New shift applications", description: "Get notified when a doctor applies to a shift." },
@@ -29,7 +40,12 @@ export default function AdminSettingsPage() {
   const [form, setForm] = useState({ name: "", address: "", city: "", phone: "", email: "" });
   const [loadedFacilityId, setLoadedFacilityId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [prefs, setPrefs] = useState<Record<string, boolean>>({
+  const {
+    prefs,
+    setPref,
+    save: savePrefs,
+    saving: savingPrefs,
+  } = useNotificationPreferences({
     "new-applications": true,
     "shift-status": true,
     payments: true,
@@ -53,8 +69,13 @@ export default function AdminSettingsPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!myFacility) return;
+    const result = schema.safeParse(form);
+    if (!result.success) {
+      toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+      return;
+    }
     setSaving(true);
-    await updateFacilityProfile(myFacility.id, form);
+    await updateFacilityProfile(myFacility.id, result.data);
     setSaving(false);
     toast.success("Settings saved");
   }
@@ -94,6 +115,7 @@ export default function AdminSettingsPage() {
                             id="org-name"
                             value={form.name}
                             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                            maxLength={150}
                             className="pl-9"
                           />
                         </div>
@@ -108,6 +130,7 @@ export default function AdminSettingsPage() {
                             id="org-address"
                             value={form.address}
                             onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                            maxLength={200}
                             className="pl-9"
                           />
                         </div>
@@ -121,8 +144,10 @@ export default function AdminSettingsPage() {
                             <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                               id="org-phone"
+                              type="tel"
                               value={form.phone}
                               onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                              maxLength={20}
                               className="pl-9"
                             />
                           </div>
@@ -135,8 +160,10 @@ export default function AdminSettingsPage() {
                             <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                             <Input
                               id="org-email"
+                              type="email"
                               value={form.email}
                               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                              maxLength={254}
                               className="pl-9"
                             />
                           </div>
@@ -171,16 +198,16 @@ export default function AdminSettingsPage() {
                     </div>
                     <Switch
                       checked={prefs[pref.id]}
-                      onCheckedChange={(checked) =>
-                        setPrefs((p) => ({ ...p, [pref.id]: checked }))
-                      }
+                      onCheckedChange={(checked) => setPref(pref.id, checked)}
                     />
                   </div>
                 ))}
               </div>
               <Separator className="my-4" />
               <div className="flex justify-end">
-                <Button onClick={() => toast.success("Preferences saved")}>Save Preferences</Button>
+                <Button onClick={savePrefs} disabled={savingPrefs}>
+                  {savingPrefs ? "Saving..." : "Save Preferences"}
+                </Button>
               </div>
             </CardContent>
           </Card>

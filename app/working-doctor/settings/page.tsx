@@ -8,11 +8,33 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { useDoctors } from "@/hooks/use-doctors";
 import { useDepartments } from "@/hooks/use-departments";
 import { useAuthRole } from "@/context/auth-provider";
+import { useNotificationPreferences } from "@/hooks/use-notification-preferences";
+import { emailField, optionalPhoneField, integerField } from "@/lib/validation";
+import { z } from "zod";
+
+const notificationPrefs = [
+  { id: "schedule-changes", label: "Schedule changes", description: "Shift reassignments or time changes." },
+  { id: "replacement-updates", label: "Replacement request updates", description: "Status changes on your coverage requests." },
+  { id: "payments", label: "Payment updates", description: "Payroll and reimbursement updates." },
+  { id: "messages", label: "Messages", description: "New messages from hospital staff." },
+];
+
+const profileSchema = z.object({
+  email: emailField,
+  phone: optionalPhoneField,
+});
+
+const preferencesSchema = z.object({
+  travelDistance: integerField(0, 500),
+  maxHours: integerField(0, 168),
+});
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -34,6 +56,17 @@ export default function WorkingDoctorSettingsPage() {
   const [availableDays, setAvailableDays] = useState<string[]>(
     me?.replacementPreferences?.availableDays ?? DAYS
   );
+  const {
+    prefs,
+    setPref,
+    save: savePrefs,
+    saving: savingPrefs,
+  } = useNotificationPreferences({
+    "schedule-changes": true,
+    "replacement-updates": true,
+    payments: true,
+    messages: true,
+  });
 
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
@@ -62,7 +95,12 @@ export default function WorkingDoctorSettingsPage() {
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                updateDoctorProfile(me.id, { phone, email });
+                const result = profileSchema.safeParse({ phone, email });
+                if (!result.success) {
+                  toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+                  return;
+                }
+                updateDoctorProfile(me.id, result.data);
                 toast.success("Profile updated");
               }}
             >
@@ -91,8 +129,10 @@ export default function WorkingDoctorSettingsPage() {
                       <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="email"
+                        type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        maxLength={254}
                         className="pl-9"
                       />
                     </div>
@@ -105,8 +145,10 @@ export default function WorkingDoctorSettingsPage() {
                       <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="phone"
+                        type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
+                        maxLength={20}
                         className="pl-9"
                       />
                     </div>
@@ -137,6 +179,7 @@ export default function WorkingDoctorSettingsPage() {
                       id="travelDistance"
                       type="number"
                       min={0}
+                      max={500}
                       value={travelDistance}
                       onChange={(e) => setTravelDistance(Number(e.target.value))}
                     />
@@ -149,6 +192,7 @@ export default function WorkingDoctorSettingsPage() {
                       id="maxHours"
                       type="number"
                       min={0}
+                      max={168}
                       value={maxHours}
                       onChange={(e) => setMaxHours(Number(e.target.value))}
                     />
@@ -193,10 +237,15 @@ export default function WorkingDoctorSettingsPage() {
               <div className="flex justify-end">
                 <Button
                   onClick={() => {
+                    const result = preferencesSchema.safeParse({ travelDistance, maxHours });
+                    if (!result.success) {
+                      toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+                      return;
+                    }
                     updateDoctorProfile(me.id, {
                       replacementPreferences: {
-                        preferredTravelDistanceMiles: travelDistance,
-                        maxHoursPerWeek: maxHours,
+                        preferredTravelDistanceMiles: result.data.travelDistance,
+                        maxHoursPerWeek: result.data.maxHours,
                         preferredDepartments: departments,
                         availableDays,
                       },
@@ -208,6 +257,35 @@ export default function WorkingDoctorSettingsPage() {
                 </Button>
               </div>
             </FieldGroup>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Notification Preferences</CardTitle>
+            <CardDescription>Choose what you want to be notified about.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y divide-border">
+              {notificationPrefs.map((pref) => (
+                <div key={pref.id} className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{pref.label}</p>
+                    <p className="text-sm text-muted-foreground">{pref.description}</p>
+                  </div>
+                  <Switch
+                    checked={prefs[pref.id]}
+                    onCheckedChange={(checked) => setPref(pref.id, checked)}
+                  />
+                </div>
+              ))}
+            </div>
+            <Separator className="my-4" />
+            <div className="flex justify-end">
+              <Button onClick={savePrefs} disabled={savingPrefs}>
+                {savingPrefs ? "Saving..." : "Save Preferences"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

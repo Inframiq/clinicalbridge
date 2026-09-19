@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -14,14 +16,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
+import { currencyField, optionalTextField } from "@/lib/validation";
 import type { ReplacementRequest } from "@/types";
 
-interface FormValues {
-  hourlyCompensation: number;
-  notes: string;
-}
+const schema = z.object({
+  hourlyCompensation: currencyField(1, 2000),
+  notes: optionalTextField(1000),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function ModifyReplacementRequestDialog({
   request,
@@ -33,7 +38,12 @@ export function ModifyReplacementRequestDialog({
   const [open, setOpen] = useState(false);
   const { modifyReplacementRequest } = useReplacementRequests();
 
-  const { register, handleSubmit } = useForm<FormValues>({
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<FormValues>({
+    resolver: zodResolver(schema),
     defaultValues: {
       hourlyCompensation: request.hourlyCompensation,
       notes: request.notes ?? "",
@@ -57,24 +67,29 @@ export function ModifyReplacementRequestDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <FieldGroup>
-            <Field>
+            <Field data-invalid={!!errors.hourlyCompensation}>
               <FieldLabel htmlFor="hourlyCompensation">Hourly Compensation ($)</FieldLabel>
               <FieldContent>
                 <Input
                   id="hourlyCompensation"
                   type="number"
                   min={1}
+                  max={2000}
+                  step="0.01"
+                  aria-invalid={!!errors.hourlyCompensation}
                   {...register("hourlyCompensation", { valueAsNumber: true })}
                 />
+                <FieldError errors={[errors.hourlyCompensation]} />
               </FieldContent>
             </Field>
 
-            <Field>
+            <Field data-invalid={!!errors.notes}>
               <FieldLabel htmlFor="notes">Notes</FieldLabel>
               <FieldContent>
-                <Textarea id="notes" rows={3} {...register("notes")} />
+                <Textarea id="notes" rows={3} maxLength={1000} {...register("notes")} />
+                <FieldError errors={[errors.notes]} />
               </FieldContent>
             </Field>
 

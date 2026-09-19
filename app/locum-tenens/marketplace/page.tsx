@@ -95,7 +95,7 @@ export default function MarketplacePage() {
             <p className="text-xs text-muted-foreground">Requires: {shift.requiredQualification}</p>
           )}
           {shift.applicationDeadline && (
-            <p className="text-xs text-warning-foreground">
+            <p className="text-xs text-warning">
               Apply by {formatDate(shift.applicationDeadline)}
             </p>
           )}

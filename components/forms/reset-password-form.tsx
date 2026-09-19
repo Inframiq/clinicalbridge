@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
+import { passwordField } from "@/lib/validation";
 
 const schema = z
   .object({
-    password: z.string().min(8, "Password must be at least 8 characters"),
+    password: passwordField,
     confirmPassword: z.string(),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -70,6 +71,7 @@ export function ResetPasswordForm() {
                   id="password"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
+                  maxLength={72}
                   className="px-9"
                   aria-invalid={!!errors.password}
                   {...register("password")}
@@ -96,6 +98,7 @@ export function ResetPasswordForm() {
                   id="confirmPassword"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
+                  maxLength={72}
                   className="pl-9"
                   aria-invalid={!!errors.confirmPassword}
                   {...register("confirmPassword")}

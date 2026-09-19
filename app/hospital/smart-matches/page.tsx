@@ -11,6 +11,9 @@ import { Person } from "@/components/dashboard/person";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { useShifts } from "@/hooks/use-shifts";
 import { useDoctors } from "@/hooks/use-doctors";
+import { useFacilities } from "@/hooks/use-facilities";
+import { useAuthRole } from "@/context/auth-provider";
+import { useAppData } from "@/context/app-data-provider";
 import { getTopMatchesForSpecialty } from "@/lib/selectors";
 import { formatDate } from "@/lib/format";
 import { Inbox } from "lucide-react";
@@ -18,6 +21,10 @@ import { Inbox } from "lucide-react";
 export default function SmartMatchesPage() {
   const { shifts } = useShifts();
   const { doctors } = useDoctors();
+  const { createNotification } = useAppData();
+  const { facilities } = useFacilities();
+  const { profile } = useAuthRole();
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const openShifts = shifts.filter((s) => s.status === "open" || s.status === "pending");
   const [selectedId, setSelectedId] = useState(openShifts[0]?.id ?? null);
   const selectedShift = openShifts.find((s) => s.id === selectedId) ?? null;
@@ -84,7 +91,15 @@ export default function SmartMatchesPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => toast.success(`Invitation sent to Dr. ${doctor.lastName}`)}
+                        onClick={async () => {
+                          if (!doctor.profileId || !selectedShift) return;
+                          const sent = await createNotification(doctor.profileId, {
+                            title: "Shift invitation",
+                            body: `${myFacility?.name ?? "A hospital"} invited you to apply for "${selectedShift.title}" (${formatDate(selectedShift.date)}).`,
+                            type: "info",
+                          });
+                          if (sent) toast.success(`Invitation sent to Dr. ${doctor.lastName}`);
+                        }}
                       >
                         <Send className="size-3.5" /> Invite
                       </Button>

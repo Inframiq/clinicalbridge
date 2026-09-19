@@ -23,13 +23,14 @@ import { useAuthRole } from "@/context/auth-provider";
 import { ROLE_CONFIG, ROLE_ONBOARDING, SELF_SERVE_ROLES, SUPER_ADMIN_EMAIL } from "@/lib/roles";
 import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
+import { nameField, emailField, passwordField } from "@/lib/validation";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
-  fullName: z.string().min(1, "Full name is required"),
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+  fullName: nameField(80),
+  email: emailField,
+  password: passwordField,
+  confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -228,6 +229,7 @@ export function SignupForm() {
                   type="text"
                   placeholder="John Doe"
                   autoComplete="name"
+                  maxLength={80}
                   className="pl-9"
                   aria-invalid={!!errors.fullName}
                   {...register("fullName")}
@@ -266,6 +268,7 @@ export function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  maxLength={72}
                   className="px-9"
                   aria-invalid={!!errors.password}
                   {...register("password")}
@@ -293,6 +296,7 @@ export function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  maxLength={72}
                   className="px-9"
                   aria-invalid={!!errors.confirmPassword}
                   {...register("confirmPassword")}

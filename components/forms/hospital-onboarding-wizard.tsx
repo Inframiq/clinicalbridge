@@ -26,6 +26,7 @@ import { useFacilities } from "@/hooks/use-facilities";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
+import { nameField, emailField, phoneField, shortTextField } from "@/lib/validation";
 
 const hospitalTypes = [
   "Multi-Specialty Hospital",
@@ -36,14 +37,14 @@ const hospitalTypes = [
 ];
 
 const schema = z.object({
-  name: z.string().min(1, "Required"),
-  registrationNumber: z.string().min(1, "Required"),
-  governmentLicense: z.string().min(1, "Required"),
+  name: shortTextField(150),
+  registrationNumber: shortTextField(50),
+  governmentLicense: shortTextField(50),
   hospitalType: z.string().min(1, "Required"),
-  city: z.string().min(1, "Required"),
-  contactPerson: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(7, "Required"),
+  city: shortTextField(80),
+  contactPerson: nameField(80),
+  email: emailField,
+  phone: phoneField,
   documentsComplete: z.boolean().refine((v) => v, "Please upload all required documents before continuing"),
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
@@ -283,7 +284,7 @@ export function HospitalOnboardingWizard() {
                   <Field data-invalid={!!errors.name}>
                     <FieldLabel htmlFor="name">Hospital Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="name" {...register("name")} />
+                      <Input id="name" maxLength={150} {...register("name")} />
                       <FieldError errors={[errors.name]} />
                     </FieldContent>
                   </Field>
@@ -291,14 +292,14 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.registrationNumber}>
                       <FieldLabel htmlFor="registrationNumber">Registration Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="registrationNumber" {...register("registrationNumber")} />
+                        <Input id="registrationNumber" maxLength={50} {...register("registrationNumber")} />
                         <FieldError errors={[errors.registrationNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.governmentLicense}>
                       <FieldLabel htmlFor="governmentLicense">Government License No. *</FieldLabel>
                       <FieldContent>
-                        <Input id="governmentLicense" {...register("governmentLicense")} />
+                        <Input id="governmentLicense" maxLength={50} {...register("governmentLicense")} />
                         <FieldError errors={[errors.governmentLicense]} />
                       </FieldContent>
                     </Field>
@@ -331,7 +332,7 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.city}>
                       <FieldLabel htmlFor="city">Address (City, State) *</FieldLabel>
                       <FieldContent>
-                        <Input id="city" placeholder="New York, NY" {...register("city")} />
+                        <Input id="city" placeholder="New York, NY" maxLength={80} {...register("city")} />
                         <FieldError errors={[errors.city]} />
                       </FieldContent>
                     </Field>
@@ -339,7 +340,7 @@ export function HospitalOnboardingWizard() {
                   <Field data-invalid={!!errors.contactPerson}>
                     <FieldLabel htmlFor="contactPerson">Contact Person *</FieldLabel>
                     <FieldContent>
-                      <Input id="contactPerson" {...register("contactPerson")} />
+                      <Input id="contactPerson" maxLength={80} {...register("contactPerson")} />
                       <FieldError errors={[errors.contactPerson]} />
                     </FieldContent>
                   </Field>
@@ -347,14 +348,14 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.email}>
                       <FieldLabel htmlFor="email">Email Address *</FieldLabel>
                       <FieldContent>
-                        <Input id="email" type="email" {...register("email")} />
+                        <Input id="email" type="email" maxLength={254} {...register("email")} />
                         <FieldError errors={[errors.email]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.phone}>
                       <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="phone" {...register("phone")} />
+                        <Input id="phone" type="tel" maxLength={20} {...register("phone")} />
                         <FieldError errors={[errors.phone]} />
                       </FieldContent>
                     </Field>

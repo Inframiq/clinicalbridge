@@ -1,4 +1,4 @@
-import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 
 export type ShiftStatus =
   | "open"
@@ -74,6 +74,10 @@ export interface Doctor {
   profileId?: string;
   /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
   registrationStatus?: string;
+  /** Super admin's review of the Basic Info section, independent of the per-document statuses. */
+  basicInfoStatus: DocumentReviewStatus;
+  basicInfoReviewedAt?: string;
+  basicInfoRejectionReason?: string;
 }
 
 export type ShiftType =

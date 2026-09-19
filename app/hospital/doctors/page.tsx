@@ -78,7 +78,7 @@ export default function DoctorsPage() {
                   {passed === 4 ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
-                    <ShieldAlert className="size-3.5 text-warning-foreground" />
+                    <ShieldAlert className="size-3.5 text-warning" />
                   )}
                   {passed}/4 checks
                 </Button>

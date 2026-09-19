@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ArrowDownToLine, Banknote, Clock3, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
@@ -21,21 +21,30 @@ export default function WalletPayoutsPage() {
   const { profile } = useAuthRole();
   const { doctors } = useDoctors();
   const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
-  const { payments } = usePayments();
+  const { payments, withdrawPayout } = usePayments();
   const { shifts } = useShifts();
+  const [withdrawing, setWithdrawing] = useState(false);
 
   const joined = useMemo(
     () => joinPostShiftRecords(payments.filter((p) => p.doctorId === myDoctorId), shifts),
     [payments, shifts, myDoctorId]
   );
 
-  const availableBalance = joined
-    .filter((p) => p.status === "approved")
-    .reduce((sum, p) => sum + p.netPayout, 0);
+  const approvedPayouts = joined.filter((p) => p.status === "approved");
+  const availableBalance = approvedPayouts.reduce((sum, p) => sum + p.netPayout, 0);
   const totalPaidOut = joined
     .filter((p) => p.status === "payment_processed")
     .reduce((sum, p) => sum + p.netPayout, 0);
   const pending = joined.filter((p) => p.status === "pending_approval").length;
+
+  async function handleWithdraw() {
+    setWithdrawing(true);
+    const results = await Promise.all(approvedPayouts.map((p) => withdrawPayout(p.id)));
+    setWithdrawing(false);
+    if (results.every(Boolean)) {
+      toast.success("Withdrawal requested — funds will arrive in 1-2 business days");
+    }
+  }
 
   return (
     <div>
@@ -94,10 +103,10 @@ export default function WalletPayoutsPage() {
             </div>
             <Button
               className="w-full"
-              disabled={availableBalance === 0}
-              onClick={() => toast.success("Withdrawal requested — funds will arrive in 1-2 business days")}
+              disabled={availableBalance === 0 || withdrawing}
+              onClick={handleWithdraw}
             >
-              <ArrowDownToLine className="size-4" /> Withdraw to Bank
+              <ArrowDownToLine className="size-4" /> {withdrawing ? "Processing..." : "Withdraw to Bank"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Payouts are sent to your bank account on file within 1-2 business days.

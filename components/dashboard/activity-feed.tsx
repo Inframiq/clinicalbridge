@@ -6,7 +6,7 @@ const iconMap: Record<ActivityFeedItem["icon"], { icon: typeof CheckCircle2; ton
   applied: { icon: ClipboardPlus, tone: "bg-info-muted text-info" },
   "checked-in": { icon: LogIn, tone: "bg-brand-muted text-brand" },
   completed: { icon: CheckCircle2, tone: "bg-success-muted text-success" },
-  new: { icon: UserPlus, tone: "bg-warning-muted text-warning-foreground" },
+  new: { icon: UserPlus, tone: "bg-warning-muted text-warning" },
   message: { icon: Mail, tone: "bg-muted text-muted-foreground" },
 };
 

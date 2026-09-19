@@ -16,7 +16,7 @@ interface StatCardProps {
 const iconToneClassNames: Record<NonNullable<StatCardProps["iconTone"]>, string> = {
   brand: "bg-brand-muted text-brand",
   success: "bg-success-muted text-success",
-  warning: "bg-warning-muted text-warning-foreground",
+  warning: "bg-warning-muted text-warning",
   info: "bg-info-muted text-info",
   neutral: "bg-muted text-muted-foreground",
 };

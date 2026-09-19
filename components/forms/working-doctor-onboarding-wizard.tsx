@@ -30,6 +30,7 @@ import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
 import { MEDICAL_SPECIALTIES } from "@/lib/config/specialties";
+import { nameField, emailField, phoneField, npiField, licenseNumberField, shortTextField } from "@/lib/validation";
 
 const MIN_DOB = isoDateYearsAgo(120);
 const MAX_DOB = todayIsoDate();
@@ -43,23 +44,19 @@ function isYearInRange(value: string, min: string, max: string) {
 }
 
 const schema = z.object({
-  firstName: z.string().min(1, "Required"),
-  lastName: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(7, "Required"),
+  firstName: nameField(60),
+  lastName: nameField(60),
+  email: emailField,
+  phone: phoneField,
   dob: z
     .string()
     .min(1, "Required")
     .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   specialty: z.string().min(1, "Required"),
-  subSpecialty: z.string().optional(),
-  npiNumber: z
-    .string()
-    .min(1, "Required")
-    .min(10, "NPI number must be 10 characters")
-    .max(10, "NPI number cannot exceed 10 characters"),
-  hospitalAffiliation: z.string().min(1, "Required"),
-  licenseNumber: z.string().min(1, "Required"),
+  subSpecialty: z.string().max(80, "Must be 80 characters or fewer").optional(),
+  npiNumber: npiField,
+  hospitalAffiliation: shortTextField(150),
+  licenseNumber: licenseNumberField(40),
   licenseExpiry: z
     .string()
     .min(1, "Required")
@@ -332,14 +329,14 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.firstName}>
                       <FieldLabel htmlFor="firstName">First Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="firstName" {...register("firstName")} />
+                        <Input id="firstName" maxLength={60} {...register("firstName")} />
                         <FieldError errors={[errors.firstName]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.lastName}>
                       <FieldLabel htmlFor="lastName">Last Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="lastName" {...register("lastName")} />
+                        <Input id="lastName" maxLength={60} {...register("lastName")} />
                         <FieldError errors={[errors.lastName]} />
                       </FieldContent>
                     </Field>
@@ -348,14 +345,14 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.email}>
                       <FieldLabel htmlFor="email">Email Address *</FieldLabel>
                       <FieldContent>
-                        <Input id="email" type="email" {...register("email")} />
+                        <Input id="email" type="email" maxLength={254} {...register("email")} />
                         <FieldError errors={[errors.email]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.phone}>
                       <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="phone" {...register("phone")} />
+                        <Input id="phone" type="tel" maxLength={20} {...register("phone")} />
                         <FieldError errors={[errors.phone]} />
                       </FieldContent>
                     </Field>
@@ -410,13 +407,13 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field>
                       <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
                       <FieldContent>
-                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" {...register("subSpecialty")} />
+                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" maxLength={80} {...register("subSpecialty")} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.hospitalAffiliation}>
                       <FieldLabel htmlFor="hospitalAffiliation">Primary Hospital Affiliation *</FieldLabel>
                       <FieldContent>
-                        <Input id="hospitalAffiliation" placeholder="St. Jude General Hospital" {...register("hospitalAffiliation")} />
+                        <Input id="hospitalAffiliation" placeholder="St. Jude General Hospital" maxLength={150} {...register("hospitalAffiliation")} />
                         <FieldError errors={[errors.hospitalAffiliation]} />
                       </FieldContent>
                     </Field>
@@ -430,7 +427,7 @@ export function WorkingDoctorOnboardingWizard() {
                     <Field data-invalid={!!errors.licenseNumber}>
                       <FieldLabel htmlFor="licenseNumber">Medical License Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseNumber" {...register("licenseNumber")} />
+                        <Input id="licenseNumber" maxLength={40} {...register("licenseNumber")} />
                         <FieldError errors={[errors.licenseNumber]} />
                       </FieldContent>
                     </Field>

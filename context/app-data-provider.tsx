@@ -43,6 +43,7 @@ import {
   updateDoctorProfileInSupabase,
   updateDoctorRegistrationStatusInSupabase,
   updateDoctorDocumentsInSupabase,
+  updateDoctorBasicInfoReviewInSupabase,
 } from "@/lib/supabase/services/doctors";
 import {
   getFacilities,
@@ -51,13 +52,18 @@ import {
   updateFacilityVerificationInSupabase,
   updateFacilityRegistrationStatusInSupabase,
   updateFacilityDocumentsInSupabase,
+  updateFacilityBasicInfoReviewInSupabase,
 } from "@/lib/supabase/services/facilities";
 import type { UploadedFileMetadata, DocumentReviewStatus } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/services/payouts";
 import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
-import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
+import {
+  getNotifications,
+  markNotificationReadInSupabase,
+  createNotificationInSupabase,
+} from "@/lib/supabase/services/notifications";
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
 import {
   getDepartments,
@@ -172,9 +178,16 @@ interface AppDataContextValue {
   updateApplicationStatus: (id: string, status: Application["status"]) => Promise<void>;
   applyToShift: (shiftId: string, doctorId: string) => Promise<void>;
   withdrawApplication: (id: string) => Promise<void>;
-  approveAndProcessPayment: (id: string) => Promise<void>;
+  approvePayment: (id: string) => Promise<void>;
+  /** Doctor-initiated: moves an "approved" payout to "Payment Processed". Resolves false on failure. */
+  withdrawPayout: (id: string) => Promise<boolean>;
   requestPaymentChanges: (id: string) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
+  /** Sends a notification to another user (invite, report, etc). Resolves false (and toasts) on failure. */
+  createNotification: (
+    recipientProfileId: string,
+    notification: Pick<AppNotification, "title" | "body" | "type">
+  ) => Promise<boolean>;
   registerDoctor: (input: NewDoctorInput) => Promise<Doctor>;
   registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: DoctorKind) => Promise<Doctor>;
   registerHospital: (input: NewHospitalInput) => Promise<Facility>;
@@ -193,6 +206,15 @@ interface AppDataContextValue {
   ) => Promise<void>;
   /** Records that a super admin opened this document in the full-screen viewer. No-op if already viewed. */
   markDoctorDocumentViewed: (id: string, docKey: string) => Promise<void>;
+  /**
+   * Records a super admin's approve/reject decision on a doctor's Basic Info
+   * section, independent of {@link reviewDoctorDocument}.
+   */
+  reviewDoctorBasicInfo: (
+    id: string,
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    reason?: string
+  ) => Promise<void>;
   updateDoctorProfile: (
     id: string,
     patch: Partial<
@@ -250,6 +272,12 @@ interface AppDataContextValue {
   ) => Promise<void>;
   /** Facility counterpart of {@link markDoctorDocumentViewed}. */
   markFacilityDocumentViewed: (id: string, docKey: string) => Promise<void>;
+  /** Facility counterpart of {@link reviewDoctorBasicInfo}. */
+  reviewFacilityBasicInfo: (
+    id: string,
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    reason?: string
+  ) => Promise<void>;
   approveFacilityRegistration: (id: string) => Promise<void>;
   rejectFacilityRegistration: (id: string) => Promise<void>;
   approveDoctorRegistration: (id: string) => Promise<void>;
@@ -564,17 +592,43 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setApplications]
   );
 
-  const approveAndProcessPayment = React.useCallback(
+  // Hospital-side: marks a payout ready to pay - funds move from "Pending
+  // Approval" into the doctor's available balance. This is deliberately not
+  // also "processed" - the doctor still has to withdraw it (see
+  // `withdrawPayout` below), matching the "Approved" vs "Payment Processed"
+  // distinction the Wallet & Payouts / Post Shift pages already draw.
+  const approvePayment = React.useCallback(
     async (id: string) => {
       const now = new Date().toISOString();
       let prevPayments: PostShiftRecord[] = [];
       setPayments((prev) => {
         prevPayments = prev;
-        return prev.map((p) =>
-          p.id === id
-            ? { ...p, status: "payment_processed", approvedAt: p.approvedAt ?? now, paidAt: now }
-            : p
-        );
+        return prev.map((p) => (p.id === id ? { ...p, status: "approved", approvedAt: now } : p));
+      });
+      const { error } = await updatePayoutStatusInSupabase(id, {
+        status: "approved",
+        approvedAt: now,
+      });
+      if (error) {
+        setPayments(prevPayments);
+        toast.error(`Couldn't approve payment: ${error}`);
+      }
+    },
+    [setPayments]
+  );
+
+  // Doctor-side: moves an already-approved payout to "Payment Processed"
+  // (paid out). This is what the Wallet & Payouts "Withdraw to Bank" button
+  // actually calls - only "approved" payouts are eligible, and RLS (the
+  // doctor owns the row via `doctors.profile_id = auth.uid()`) already
+  // allows this without any hospital action.
+  const withdrawPayout = React.useCallback(
+    async (id: string) => {
+      const now = new Date().toISOString();
+      let prevPayments: PostShiftRecord[] = [];
+      setPayments((prev) => {
+        prevPayments = prev;
+        return prev.map((p) => (p.id === id ? { ...p, status: "payment_processed", paidAt: now } : p));
       });
       const { error } = await updatePayoutStatusInSupabase(id, {
         status: "payment_processed",
@@ -582,8 +636,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         setPayments(prevPayments);
-        toast.error(`Couldn't process payment: ${error}`);
+        toast.error(`Couldn't process withdrawal: ${error}`);
       }
+      return !error;
     },
     [setPayments]
   );
@@ -620,6 +675,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setNotifications]
   );
 
+  // Sends a notification to another user (an invite, a break/issue report,
+  // etc). Deliberately no optimistic update to the local `notifications`
+  // slice - that slice is this signed-in user's own inbox, and the
+  // recipient here is someone else entirely.
+  const createNotification = React.useCallback(
+    async (recipientProfileId: string, notification: Pick<AppNotification, "title" | "body" | "type">) => {
+      const { error } = await createNotificationInSupabase(recipientProfileId, {
+        id: crypto.randomUUID(),
+        ...notification,
+      });
+      if (error) {
+        toast.error(`Couldn't send notification: ${error}`);
+        return false;
+      }
+      return true;
+    },
+    []
+  );
+
   // `registerDoctor` / `registerSelfDoctor` / `registerHospital` have no writer:
   // the `doctors` / `facilities` rows are inserted by the onboarding wizards
   // (which own the auth user id) and replayed here by the realtime effect. They
@@ -648,6 +722,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           identity: false,
           hospitalApproval: false,
         },
+        basicInfoStatus: "pending",
         firstName: input.firstName,
         lastName: input.lastName,
         department: input.department,
@@ -675,6 +750,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           identity: false,
           hospitalApproval: false,
         },
+        basicInfoStatus: "pending",
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
@@ -697,6 +773,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           accreditation: false,
           authorizedSignatory: false,
         },
+        basicInfoStatus: "pending",
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
@@ -845,6 +922,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         setDoctors(prevDoctors);
         reportSupabase(`markDoctorDocumentViewed(${id})`, error);
+      }
+    },
+    [setDoctors]
+  );
+
+  const reviewDoctorBasicInfo = React.useCallback(
+    async (id: string, decision: Exclude<DocumentReviewStatus, "pending">, reason?: string) => {
+      let prevDoctors: Doctor[] = [];
+      setDoctors((prev) => {
+        prevDoctors = prev;
+        return prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                basicInfoStatus: decision,
+                basicInfoReviewedAt: new Date().toISOString(),
+                basicInfoRejectionReason: decision === "rejected" ? reason : undefined,
+              }
+            : d
+        );
+      });
+
+      toast.success(decision === "approved" ? "Basic info approved." : "Basic info rejected.");
+
+      const { error } = await updateDoctorBasicInfoReviewInSupabase(id, decision, reason);
+      if (error) {
+        setDoctors(prevDoctors);
+        toast.error(`Couldn't save the decision: ${error}`);
       }
     },
     [setDoctors]
@@ -1273,6 +1378,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setFacilities]
   );
 
+  const reviewFacilityBasicInfo = React.useCallback(
+    async (id: string, decision: Exclude<DocumentReviewStatus, "pending">, reason?: string) => {
+      let prevFacilities: Facility[] = [];
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) =>
+          f.id === id
+            ? {
+                ...f,
+                basicInfoStatus: decision,
+                basicInfoReviewedAt: new Date().toISOString(),
+                basicInfoRejectionReason: decision === "rejected" ? reason : undefined,
+              }
+            : f
+        );
+      });
+
+      toast.success(decision === "approved" ? "Basic info approved." : "Basic info rejected.");
+
+      const { error } = await updateFacilityBasicInfoReviewInSupabase(id, decision, reason);
+      if (error) {
+        setFacilities(prevFacilities);
+        toast.error(`Couldn't save the decision: ${error}`);
+      }
+    },
+    [setFacilities]
+  );
+
   const approveFacilityRegistration = React.useCallback(
     async (id: string) => {
       const fullyVerified: HospitalVerification = {
@@ -1510,15 +1643,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateApplicationStatus,
       applyToShift,
       withdrawApplication,
-      approveAndProcessPayment,
+      approvePayment,
+      withdrawPayout,
       requestPaymentChanges,
       markNotificationRead,
+      createNotification,
       registerDoctor,
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
       markDoctorDocumentViewed,
+      reviewDoctorBasicInfo,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1533,6 +1669,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
+      reviewFacilityBasicInfo,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
@@ -1561,15 +1698,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateApplicationStatus,
       applyToShift,
       withdrawApplication,
-      approveAndProcessPayment,
+      approvePayment,
+      withdrawPayout,
       requestPaymentChanges,
       markNotificationRead,
+      createNotification,
       registerDoctor,
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
       markDoctorDocumentViewed,
+      reviewDoctorBasicInfo,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1584,6 +1724,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
+      reviewFacilityBasicInfo,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,

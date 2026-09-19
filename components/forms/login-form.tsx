@@ -24,11 +24,15 @@ import { useAuthRole } from "@/context/auth-provider";
 import { ROLE_CONFIG, ROLE_HOME, ROLE_ONBOARDING, SELF_SERVE_ROLES } from "@/lib/roles";
 import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
+import { emailField } from "@/lib/validation";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: emailField,
+  // Deliberately not raised to the signup/reset 8-char minimum - accounts
+  // created before that change may still have a 6-7 char password, and
+  // login must keep accepting it. Only a sane upper bound is added here.
+  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password is too long"),
 });
 
 type FormValues = z.infer<typeof schema>;

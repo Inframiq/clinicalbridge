@@ -18,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 
-const STATUS_META: Record<
+export const STATUS_META: Record<
   DocumentReviewStatus,
   { label: string; className: string; Icon: typeof CheckCircle2 }
 > = {
@@ -73,7 +73,7 @@ function DocumentMedia({
 
   if (isLocalOnly) {
     return (
-      <div className="rounded-md bg-warning/10 px-3 py-4 text-center text-sm text-warning-foreground">
+      <div className="rounded-md bg-warning/10 px-3 py-4 text-center text-sm text-warning">
         This document was only stored in the applicant&apos;s browser during sign-up (the storage
         upload failed) and can&apos;t be opened here. Ask them to re-upload it.
       </div>
@@ -129,7 +129,7 @@ function DocumentMedia({
  * "Reject" is clicked — a rejection isn't committed until a reason is typed,
  * so the applicant always finds out what to fix.
  */
-function RejectReasonPanel({
+export function RejectReasonPanel({
   reason,
   onReasonChange,
   onConfirm,
@@ -171,7 +171,7 @@ function RejectReasonPanel({
   );
 }
 
-function DecisionButtons({
+export function DecisionButtons({
   status,
   readOnly,
   canApprove,

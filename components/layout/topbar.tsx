@@ -27,6 +27,7 @@ import {
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Breadcrumbs } from "@/components/layout/breadcrumbs";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 import type { NavItem } from "@/lib/nav-config";
 import { useAuthRole } from "@/context/auth-provider";
 import type { UserProfile } from "@/context/auth-provider";
@@ -112,11 +113,13 @@ export function Topbar({
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         {myFacility && (
-          <Button variant="outline" size="sm" className="hidden gap-2 sm:flex" disabled>
+          <span className="hidden items-center gap-2 rounded-md border border-input px-3 py-1.5 text-sm sm:flex">
             <Building2 className="size-4 text-muted-foreground" />
             <span className="max-w-[140px] truncate">{myFacility.name}</span>
-          </Button>
+          </span>
         )}
+
+        <ThemeToggle />
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

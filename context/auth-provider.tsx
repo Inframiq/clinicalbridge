@@ -20,6 +20,8 @@ export interface UserProfile {
   completed_onboarding: boolean;
   verification_status: string; // 'Pending' | 'Submitted' | 'Under Review' | 'Needs Changes' | 'Rejected' | 'Approved'
   created_at?: string;
+  /** Per-topic notification toggles. Topic keys are owned by each role's Settings page, not fixed here. */
+  notification_preferences?: Record<string, boolean>;
 }
 
 interface AuthSession {
@@ -53,7 +55,11 @@ interface AuthContextValue extends AuthSession {
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<UserProfile | null>;
-  updateAccountProfile: (patch: { full_name?: string; phone?: string }) => Promise<{ error: Error | null }>;
+  updateAccountProfile: (patch: {
+    full_name?: string;
+    phone?: string;
+    notification_preferences?: Record<string, boolean>;
+  }) => Promise<{ error: Error | null }>;
   loading: boolean;
 }
 
@@ -208,12 +214,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return profile;
   }, [supabase, fetchProfile, setSession]);
 
-  // Account-level fields only (full_name, phone) - the privileged-column guard
-  // trigger on public.profiles (migration 012) rejects any attempt to change
-  // role/verified/verification_status through a plain UPDATE, so this can't
-  // be misused to self-approve or escalate.
+  // Account-level fields only (full_name, phone, notification_preferences) -
+  // the privileged-column guard trigger on public.profiles (migration 012)
+  // rejects any attempt to change role/verified/verification_status through
+  // a plain UPDATE, so this can't be misused to self-approve or escalate.
   const updateAccountProfile = React.useCallback(
-    async (patch: { full_name?: string; phone?: string }) => {
+    async (patch: { full_name?: string; phone?: string; notification_preferences?: Record<string, boolean> }) => {
       if (!supabase) return { error: new Error("Supabase is not configured") };
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { error: new Error("Not signed in") };

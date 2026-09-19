@@ -30,7 +30,7 @@ const tabs: { value: string; label: string; statuses?: PayoutStatus[] }[] = [
 ];
 
 export default function AdminPostShiftPage() {
-  const { payments, approveAndProcessPayment, requestPaymentChanges } = usePayments();
+  const { payments, approvePayment, requestPaymentChanges } = usePayments();
   const { shifts } = useShifts();
   const { doctors } = useDoctors();
   const [tab, setTab] = useState("all");
@@ -159,7 +159,7 @@ export default function AdminPostShiftPage() {
                 record={selected}
                 doctors={doctors}
                 actions={
-                  selected.status === "pending_approval" || selected.status === "approved" ? (
+                  selected.status === "pending_approval" ? (
                     <>
                       <Button
                         variant="outline"
@@ -168,13 +168,14 @@ export default function AdminPostShiftPage() {
                       >
                         Request Changes
                       </Button>
-                      <Button
-                        className="flex-1"
-                        onClick={() => approveAndProcessPayment(selected.id)}
-                      >
-                        Approve & Process Payment
+                      <Button className="flex-1" onClick={() => approvePayment(selected.id)}>
+                        Approve Payment
                       </Button>
                     </>
+                  ) : selected.status === "approved" ? (
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      Approved — awaiting the doctor to withdraw funds.
+                    </p>
                   ) : undefined
                 }
               />

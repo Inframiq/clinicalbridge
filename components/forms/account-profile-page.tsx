@@ -13,6 +13,13 @@ import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/fie
 import { useAuthRole } from "@/context/auth-provider";
 import { ROLE_CONFIG } from "@/lib/roles";
 import { formatDate, initials } from "@/lib/format";
+import { nameField, optionalPhoneField } from "@/lib/validation";
+import { z } from "zod";
+
+const schema = z.object({
+  fullName: nameField(80),
+  phone: optionalPhoneField,
+});
 
 /**
  * The account-level "My Profile" page (name, email, phone, role, member
@@ -41,8 +48,16 @@ export function AccountProfilePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    const result = schema.safeParse({ fullName, phone });
+    if (!result.success) {
+      toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+      return;
+    }
     setSaving(true);
-    const { error } = await updateAccountProfile({ full_name: fullName, phone });
+    const { error } = await updateAccountProfile({
+      full_name: result.data.fullName,
+      phone: result.data.phone,
+    });
     setSaving(false);
     if (error) {
       toast.error(error.message || "Failed to update profile");
@@ -97,6 +112,7 @@ export function AccountProfilePage() {
                         id="fullName"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
+                        maxLength={80}
                         className="pl-9"
                       />
                     </div>
@@ -109,8 +125,10 @@ export function AccountProfilePage() {
                       <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         id="phone"
+                        type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
+                        maxLength={20}
                         className="pl-9"
                       />
                     </div>

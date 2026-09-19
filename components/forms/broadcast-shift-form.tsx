@@ -23,6 +23,8 @@ import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
 import { formatCurrency, to12Hour } from "@/lib/format";
+import { todayIsoDate } from "@/lib/utils";
+import { currencyField, notesField, optionalTextField } from "@/lib/validation";
 import type { ExperienceLevel, ShiftType } from "@/types";
 
 const shiftTypes: ShiftType[] = [
@@ -37,16 +39,19 @@ const experienceLevels: ExperienceLevel[] = ["Entry Level", "Mid Level+", "Senio
 
 const schema = z
   .object({
-    date: z.string().min(1, "Date is required"),
+    date: z
+      .string()
+      .min(1, "Date is required")
+      .refine((v) => v >= todayIsoDate(), "Date can't be in the past"),
     startTime: z.string().min(1, "Start time is required"),
     endTime: z.string().min(1, "End time is required"),
     department: z.string().min(1, "Select a department"),
     shiftType: z.string().min(1, "Select a shift type"),
-    subSpecialty: z.string().optional(),
-    hourlyRate: z.number().min(1, "Enter a valid rate"),
-    doctorsNeeded: z.number().min(1).max(10),
+    subSpecialty: optionalTextField(60),
+    hourlyRate: currencyField(1, 2000),
+    doctorsNeeded: z.number().int("Must be a whole number").min(1).max(10),
     experienceLevel: z.string().min(1, "Select an experience level"),
-    description: z.string().min(10, "Add a short description of requirements"),
+    description: notesField(10, 1000, "Add a short description of requirements"),
     codeRed: z.boolean(),
   })
   .refine((data) => data.endTime > data.startTime, {
@@ -156,7 +161,13 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field data-invalid={!!errors.date}>
             <FieldLabel htmlFor="date">Date</FieldLabel>
             <FieldContent>
-              <Input id="date" type="date" {...register("date")} aria-invalid={!!errors.date} />
+              <Input
+                id="date"
+                type="date"
+                min={todayIsoDate()}
+                {...register("date")}
+                aria-invalid={!!errors.date}
+              />
               <FieldError errors={[errors.date]} />
             </FieldContent>
           </Field>
@@ -235,7 +246,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field>
             <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
             <FieldContent>
-              <Input id="subSpecialty" placeholder="e.g. Trauma" {...register("subSpecialty")} />
+              <Input id="subSpecialty" placeholder="e.g. Trauma" maxLength={60} {...register("subSpecialty")} />
             </FieldContent>
           </Field>
           <Field data-invalid={!!errors.hourlyRate}>
@@ -245,6 +256,8 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
                 id="hourlyRate"
                 type="number"
                 min={1}
+                max={2000}
+                step="0.01"
                 {...register("hourlyRate", { valueAsNumber: true })}
               />
               <FieldError errors={[errors.hourlyRate]} />
@@ -326,6 +339,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
             <Textarea
               id="description"
               rows={3}
+              maxLength={1000}
               placeholder="Seeking experienced physicians for this shift. Must have relevant certifications."
               {...register("description")}
             />

@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
+import { emailField } from "@/lib/validation";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid email address"),
+  email: emailField,
 });
 
 type FormValues = z.infer<typeof schema>;

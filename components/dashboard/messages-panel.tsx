@@ -15,6 +15,8 @@ import { formatDistance } from "date-fns";
 import { cn } from "@/lib/utils";
 import { MessageSquare } from "lucide-react";
 
+const MAX_MESSAGE_LENGTH = 2000;
+
 /**
  * Shared "Messages" page body for every role. Who a user can start a new
  * thread with is derived from the same relationship-scoped data the RLS
@@ -140,18 +142,20 @@ export function MessagesPanel() {
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Type a message..."
+                  maxLength={MAX_MESSAGE_LENGTH}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && draft.trim()) {
-                      sendMessage(draft);
+                    const trimmed = draft.trim();
+                    if (e.key === "Enter" && trimmed && trimmed.length <= MAX_MESSAGE_LENGTH) {
+                      sendMessage(trimmed);
                       setDraft("");
                     }
                   }}
                 />
                 <Button
                   size="icon"
-                  disabled={!draft.trim()}
+                  disabled={!draft.trim() || draft.trim().length > MAX_MESSAGE_LENGTH}
                   onClick={() => {
-                    sendMessage(draft);
+                    sendMessage(draft.trim());
                     setDraft("");
                   }}
                 >

@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Doctor, DoctorVerification } from "@/types";
-import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
@@ -39,6 +39,9 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
     uploadedDocuments: item.uploaded_documents ?? {},
     profileId: item.profile_id ?? undefined,
     registrationStatus: item.profiles?.verification_status ?? undefined,
+    basicInfoStatus: (item.basic_info_status ?? "pending") as DocumentReviewStatus,
+    basicInfoReviewedAt: item.basic_info_reviewed_at ?? undefined,
+    basicInfoRejectionReason: item.basic_info_rejection_reason ?? undefined,
   } satisfies Doctor;
 }
 
@@ -101,6 +104,46 @@ export async function updateDoctorVerificationInSupabase(
     return { data, error: null };
   } catch (err) {
     reportSupabase(`updateDoctorVerificationInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
+  }
+}
+
+/**
+ * Records a super admin's approve/reject decision on a doctor's Basic Info
+ * section - independent of the per-document review in
+ * {@link updateDoctorDocumentsInSupabase}.
+ */
+export async function updateDoctorBasicInfoReviewInSupabase(
+  id: string,
+  decision: Exclude<DocumentReviewStatus, "pending">,
+  reason: string | undefined,
+  client?: SupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorBasicInfoReviewInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("doctors")
+      .update({
+        basic_info_status: decision,
+        basic_info_reviewed_at: new Date().toISOString(),
+        basic_info_rejection_reason: decision === "rejected" ? reason : null,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorBasicInfoReviewInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateDoctorBasicInfoReviewInSupabase(${id})`, err);
     return { data: null, error: describeSupabaseError(err) };
   }
 }

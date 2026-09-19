@@ -97,7 +97,7 @@ export default function SuperAdminDoctorsPage() {
                   ) : total > 0 && approved === total ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
-                    <ShieldAlert className="size-3.5 text-warning-foreground" />
+                    <ShieldAlert className="size-3.5 text-warning" />
                   )}
                   {approved}/{total} docs
                 </Button>

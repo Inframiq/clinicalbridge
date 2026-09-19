@@ -41,6 +41,16 @@ import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
 import { MEDICAL_SPECIALTIES } from "@/lib/config/specialties";
+import {
+  nameField,
+  emailField,
+  phoneField,
+  npiField,
+  licenseNumberField,
+  shortTextField,
+  routingNumberField,
+  bankAccountNumberField,
+} from "@/lib/validation";
 import type { Doctor } from "@/types";
 
 const MIN_DOB = isoDateYearsAgo(120);
@@ -55,27 +65,23 @@ function isYearInRange(value: string, min: string, max: string) {
 }
 
 const schema = z.object({
-  firstName: z.string().min(1, "Required"),
-  lastName: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(7, "Required"),
+  firstName: nameField(60),
+  lastName: nameField(60),
+  email: emailField,
+  phone: phoneField,
   dob: z
     .string()
     .min(1, "Required")
     .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   gender: z.string().min(1, "Required"),
-  npiNumber: z
-    .string()
-    .min(1, "Required")
-    .min(10, "NPI number must be 10 characters")
-    .max(10, "NPI number cannot exceed 10 characters"),
+  npiNumber: npiField,
   primarySpecialty: z.string().min(1, "Required"),
-  subSpecialty: z.string().optional(),
+  subSpecialty: z.string().max(80, "Must be 80 characters or fewer").optional(),
   yearsOfExperience: z.string().min(1, "Required"),
   employmentType: z.string().min(1, "Required"),
-  preferredLocations: z.string().min(1, "Add at least one location"),
+  preferredLocations: shortTextField(300, "Add at least one location"),
 
-  licenseNumber: z.string().min(1, "Required"),
+  licenseNumber: licenseNumberField(40),
   licenseState: z.string().min(1, "Required"),
   licenseExpiry: z
     .string()
@@ -86,10 +92,10 @@ const schema = z.object({
 
   backgroundCheckConsent: z.boolean().refine((v) => v, "Consent is required to continue"),
 
-  bankAccountHolder: z.string().min(1, "Required"),
-  bankName: z.string().min(1, "Required"),
-  accountNumber: z.string().min(4, "Required"),
-  routingNumber: z.string().min(4, "Required"),
+  bankAccountHolder: shortTextField(100),
+  bankName: shortTextField(100),
+  accountNumber: bankAccountNumberField,
+  routingNumber: routingNumberField,
 
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
@@ -399,14 +405,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.firstName}>
                       <FieldLabel htmlFor="firstName">First Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="firstName" {...register("firstName")} />
+                        <Input id="firstName" maxLength={60} {...register("firstName")} />
                         <FieldError errors={[errors.firstName]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.lastName}>
                       <FieldLabel htmlFor="lastName">Last Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="lastName" {...register("lastName")} />
+                        <Input id="lastName" maxLength={60} {...register("lastName")} />
                         <FieldError errors={[errors.lastName]} />
                       </FieldContent>
                     </Field>
@@ -415,14 +421,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.email}>
                       <FieldLabel htmlFor="email">Email Address *</FieldLabel>
                       <FieldContent>
-                        <Input id="email" type="email" {...register("email")} />
+                        <Input id="email" type="email" maxLength={254} {...register("email")} />
                         <FieldError errors={[errors.email]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.phone}>
                       <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="phone" {...register("phone")} />
+                        <Input id="phone" type="tel" maxLength={20} {...register("phone")} />
                         <FieldError errors={[errors.phone]} />
                       </FieldContent>
                     </Field>
@@ -499,7 +505,7 @@ export function OnboardingWizard() {
                     <Field>
                       <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
                       <FieldContent>
-                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" {...register("subSpecialty")} />
+                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" maxLength={80} {...register("subSpecialty")} />
                       </FieldContent>
                     </Field>
                   </div>
@@ -557,6 +563,7 @@ export function OnboardingWizard() {
                       <Input
                         id="preferredLocations"
                         placeholder="New York, NY; Boston, MA"
+                        maxLength={300}
                         {...register("preferredLocations")}
                       />
                       <FieldError errors={[errors.preferredLocations]} />
@@ -571,14 +578,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.licenseNumber}>
                       <FieldLabel htmlFor="licenseNumber">Medical License Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseNumber" {...register("licenseNumber")} />
+                        <Input id="licenseNumber" maxLength={40} {...register("licenseNumber")} />
                         <FieldError errors={[errors.licenseNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.licenseState}>
                       <FieldLabel htmlFor="licenseState">Issuing State *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseState" placeholder="e.g. NY" {...register("licenseState")} />
+                        <Input id="licenseState" placeholder="e.g. NY" maxLength={40} {...register("licenseState")} />
                         <FieldError errors={[errors.licenseState]} />
                       </FieldContent>
                     </Field>
@@ -730,14 +737,14 @@ export function OnboardingWizard() {
                   <Field data-invalid={!!errors.bankAccountHolder}>
                     <FieldLabel htmlFor="bankAccountHolder">Account Holder Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="bankAccountHolder" {...register("bankAccountHolder")} />
+                      <Input id="bankAccountHolder" maxLength={100} {...register("bankAccountHolder")} />
                       <FieldError errors={[errors.bankAccountHolder]} />
                     </FieldContent>
                   </Field>
                   <Field data-invalid={!!errors.bankName}>
                     <FieldLabel htmlFor="bankName">Bank Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="bankName" {...register("bankName")} />
+                      <Input id="bankName" maxLength={100} {...register("bankName")} />
                       <FieldError errors={[errors.bankName]} />
                     </FieldContent>
                   </Field>
@@ -745,14 +752,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.accountNumber}>
                       <FieldLabel htmlFor="accountNumber">Account Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="accountNumber" {...register("accountNumber")} />
+                        <Input id="accountNumber" inputMode="numeric" maxLength={17} {...register("accountNumber")} />
                         <FieldError errors={[errors.accountNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.routingNumber}>
                       <FieldLabel htmlFor="routingNumber">Routing Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="routingNumber" {...register("routingNumber")} />
+                        <Input id="routingNumber" inputMode="numeric" maxLength={9} {...register("routingNumber")} />
                         <FieldError errors={[errors.routingNumber]} />
                       </FieldContent>
                     </Field>

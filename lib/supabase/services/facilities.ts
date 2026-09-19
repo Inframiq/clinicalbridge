@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { HospitalVerification } from "@/types";
-import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
@@ -24,6 +24,10 @@ export interface Facility {
   profileId?: string;
   /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
   registrationStatus?: string;
+  /** Super admin's review of the Basic Info section, independent of the per-document statuses. */
+  basicInfoStatus: DocumentReviewStatus;
+  basicInfoReviewedAt?: string;
+  basicInfoRejectionReason?: string;
 }
 
 const EMPTY_VERIFICATION: HospitalVerification = {
@@ -54,6 +58,9 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
     uploadedDocuments: item.uploaded_documents ?? {},
     profileId: item.profile_id ?? undefined,
     registrationStatus: item.profiles?.verification_status ?? undefined,
+    basicInfoStatus: (item.basic_info_status ?? "pending") as DocumentReviewStatus,
+    basicInfoReviewedAt: item.basic_info_reviewed_at ?? undefined,
+    basicInfoRejectionReason: item.basic_info_rejection_reason ?? undefined,
   } satisfies Facility;
 }
 
@@ -182,6 +189,46 @@ export async function updateFacilityDocumentsInSupabase(
     return { data, error: null };
   } catch (err) {
     reportSupabase(`updateFacilityDocumentsInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
+  }
+}
+
+/**
+ * Records a super admin's approve/reject decision on a facility's Basic Info
+ * section - independent of the per-document review in
+ * {@link updateFacilityDocumentsInSupabase}.
+ */
+export async function updateFacilityBasicInfoReviewInSupabase(
+  id: string,
+  decision: Exclude<DocumentReviewStatus, "pending">,
+  reason: string | undefined,
+  client?: SupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateFacilityBasicInfoReviewInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("facilities")
+      .update({
+        basic_info_status: decision,
+        basic_info_reviewed_at: new Date().toISOString(),
+        basic_info_rejection_reason: decision === "rejected" ? reason : null,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateFacilityBasicInfoReviewInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateFacilityBasicInfoReviewInSupabase(${id})`, err);
     return { data: null, error: describeSupabaseError(err) };
   }
 }

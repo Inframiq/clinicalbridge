@@ -10,7 +10,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { DocumentPreviewCard } from "@/components/forms/document-preview-card";
+import { BasicInfoReviewPanel } from "@/components/forms/basic-info-review-panel";
 import { useFacilities } from "@/hooks/use-facilities";
 import type { Facility } from "@/lib/supabase/services/facilities";
 import type { DocumentReviewStatus } from "@/lib/supabase/storage";
@@ -30,6 +32,16 @@ function documentLabel(key: string) {
   );
 }
 
+function BasicInfoField({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-0.5 font-medium text-foreground">{value}</p>
+    </div>
+  );
+}
+
 export function VerifyHospitalDialog({
   facility,
   trigger,
@@ -41,6 +53,7 @@ export function VerifyHospitalDialog({
   const {
     reviewFacilityDocument,
     markFacilityDocumentViewed,
+    reviewFacilityBasicInfo,
     approveFacilityRegistration,
     rejectFacilityRegistration,
   } = useFacilities();
@@ -49,7 +62,9 @@ export function VerifyHospitalDialog({
   const statusOf = (s?: DocumentReviewStatus): DocumentReviewStatus => s ?? "pending";
   const approvedCount = uploadedDocs.filter(([, f]) => statusOf(f.status) === "approved").length;
   const rejectedCount = uploadedDocs.filter(([, f]) => statusOf(f.status) === "rejected").length;
-  const allApproved = uploadedDocs.length > 0 && approvedCount === uploadedDocs.length;
+  const allDocsApproved = uploadedDocs.length > 0 && approvedCount === uploadedDocs.length;
+  const basicInfoApproved = facility.basicInfoStatus === "approved";
+  const readyToApprove = allDocsApproved && basicInfoApproved;
   const alreadyDecided =
     facility.registrationStatus === "Approved" || facility.registrationStatus === "Rejected";
 
@@ -59,6 +74,14 @@ export function VerifyHospitalDialog({
 
   function handleView(key: string) {
     void markFacilityDocumentViewed(facility.id, key);
+  }
+
+  function handleBasicInfoApprove() {
+    void reviewFacilityBasicInfo(facility.id, "approved");
+  }
+
+  function handleBasicInfoReject(reason: string) {
+    void reviewFacilityBasicInfo(facility.id, "rejected", reason);
   }
 
   function handleApprove() {
@@ -78,8 +101,8 @@ export function VerifyHospitalDialog({
         <div className="shrink-0 border-b border-border px-6 py-4 pr-12">
           <DialogTitle>Profile &amp; Verification</DialogTitle>
           <DialogDescription>
-            Approve or reject each uploaded document. The hospital only goes live once every
-            document is approved; a single rejection rejects the registration.
+            Review Basic Info and Documents independently. The hospital only goes live once
+            both sections are approved; rejecting either sends the applicant back to fix it.
           </DialogDescription>
           <div className="mt-3">
             <p className="text-sm font-medium text-foreground">{facility.name}</p>
@@ -111,48 +134,81 @@ export function VerifyHospitalDialog({
           </div>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
-          {uploadedDocs.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-destructive">
-              No documents were uploaded by this hospital.
-            </p>
-          ) : (
-            uploadedDocs.map(([key, file]) => (
-              <DocumentPreviewCard
-                key={key}
-                label={documentLabel(key)}
-                file={file}
-                status={statusOf(file.status)}
-                reviewedAt={file.reviewedAt}
-                viewedAt={file.viewedAt}
-                readOnly={alreadyDecided}
-                onApprove={() => handleReview(key, "approved")}
-                onReject={() => handleReview(key, "rejected")}
-                onView={() => handleView(key)}
-              />
-            ))
-          )}
+        <Tabs defaultValue="basic-info" className="flex flex-1 flex-col overflow-hidden gap-0">
+          <div className="shrink-0 border-b border-border px-6 pt-3 pb-3">
+            <TabsList>
+              <TabsTrigger value="basic-info">
+                Basic Info
+                {basicInfoApproved && <CheckCircle2 className="size-3.5 text-success" />}
+              </TabsTrigger>
+              <TabsTrigger value="documents">
+                Documents ({approvedCount}/{uploadedDocs.length})
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          {rejectedCount > 0 && (
-            <p className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">
-              {rejectedCount} document{rejectedCount > 1 ? "s were" : " was"} rejected — this
-              registration is rejected.
-            </p>
-          )}
-          {allApproved && !alreadyDecided && (
-            <p className="rounded-lg bg-success/10 p-3 text-sm font-medium text-success">
-              All documents approved — you can now approve the registration.
-            </p>
-          )}
-        </div>
+          <TabsContent value="basic-info" className="flex-1 overflow-y-auto px-6 py-4">
+            <BasicInfoReviewPanel
+              status={facility.basicInfoStatus}
+              reviewedAt={facility.basicInfoReviewedAt}
+              rejectionReason={facility.basicInfoRejectionReason}
+              readOnly={alreadyDecided}
+              onApprove={handleBasicInfoApprove}
+              onReject={handleBasicInfoReject}
+            >
+              <div className="grid grid-cols-2 gap-4 rounded-xl border border-border p-4 text-sm sm:grid-cols-3">
+                <BasicInfoField label="Hospital Name" value={facility.name} />
+                <BasicInfoField label="Hospital Type" value={facility.hospitalType} />
+                <BasicInfoField label="Registration Number" value={facility.registrationNumber} />
+                <BasicInfoField label="Government License No." value={facility.governmentLicense} />
+                <BasicInfoField label="City" value={facility.city} />
+                <BasicInfoField label="Address" value={facility.address} />
+                <BasicInfoField label="Contact Person" value={facility.contactPerson} />
+                <BasicInfoField label="Email" value={facility.email} />
+                <BasicInfoField label="Phone" value={facility.phone} />
+              </div>
+            </BasicInfoReviewPanel>
+          </TabsContent>
+
+          <TabsContent value="documents" className="flex-1 space-y-3 overflow-y-auto px-6 py-4">
+            {uploadedDocs.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-border p-6 text-center text-sm text-destructive">
+                No documents were uploaded by this hospital.
+              </p>
+            ) : (
+              uploadedDocs.map(([key, file]) => (
+                <DocumentPreviewCard
+                  key={key}
+                  label={documentLabel(key)}
+                  file={file}
+                  status={statusOf(file.status)}
+                  reviewedAt={file.reviewedAt}
+                  viewedAt={file.viewedAt}
+                  readOnly={alreadyDecided}
+                  onApprove={() => handleReview(key, "approved")}
+                  onReject={() => handleReview(key, "rejected")}
+                  onView={() => handleView(key)}
+                />
+              ))
+            )}
+
+            {rejectedCount > 0 && (
+              <p className="rounded-lg bg-destructive/10 p-3 text-sm font-medium text-destructive">
+                {rejectedCount} document{rejectedCount > 1 ? "s were" : " was"} rejected — fix
+                required before the registration can be approved.
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">
+            Basic Info: {facility.basicInfoStatus} · Documents:{" "}
             {uploadedDocs.length === 0
-              ? "No documents to review."
-              : `${approvedCount} of ${uploadedDocs.length} document${
-                  uploadedDocs.length > 1 ? "s" : ""
-                } approved${rejectedCount > 0 ? ` · ${rejectedCount} rejected` : ""}`}
+              ? "none uploaded"
+              : `${approvedCount} of ${uploadedDocs.length} approved${
+                  rejectedCount > 0 ? ` · ${rejectedCount} rejected` : ""
+                }`}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -164,7 +220,7 @@ export function VerifyHospitalDialog({
             >
               <ShieldX className="size-4" /> Reject Registration
             </Button>
-            <Button type="button" disabled={!allApproved || alreadyDecided} onClick={handleApprove}>
+            <Button type="button" disabled={!readyToApprove || alreadyDecided} onClick={handleApprove}>
               <CheckCircle2 className="size-4" /> Approve Registration
             </Button>
           </div>

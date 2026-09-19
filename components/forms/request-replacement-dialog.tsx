@@ -19,12 +19,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
+import { notesField, currencyField, optionalTextField } from "@/lib/validation";
 import type { Shift } from "@/types";
 
 const schema = z.object({
-  reason: z.string().min(5, "Tell the hospital why you need coverage"),
-  hourlyCompensation: z.number().min(1, "Enter a valid hourly rate"),
-  notes: z.string().optional(),
+  reason: notesField(5, 500, "Tell the hospital why you need coverage"),
+  hourlyCompensation: currencyField(1, 2000),
+  notes: optionalTextField(1000),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -88,7 +89,7 @@ export function RequestReplacementDialog({
             <Field data-invalid={!!errors.reason}>
               <FieldLabel htmlFor="reason">Reason</FieldLabel>
               <FieldContent>
-                <Textarea id="reason" rows={2} placeholder="e.g. Family emergency" {...register("reason")} />
+                <Textarea id="reason" rows={2} maxLength={500} placeholder="e.g. Family emergency" {...register("reason")} />
                 <FieldError errors={[errors.reason]} />
               </FieldContent>
             </Field>
@@ -100,6 +101,8 @@ export function RequestReplacementDialog({
                   id="hourlyCompensation"
                   type="number"
                   min={1}
+                  max={2000}
+                  step="0.01"
                   {...register("hourlyCompensation", { valueAsNumber: true })}
                 />
                 <FieldError errors={[errors.hourlyCompensation]} />
@@ -109,7 +112,7 @@ export function RequestReplacementDialog({
             <Field>
               <FieldLabel htmlFor="notes">Notes (Optional)</FieldLabel>
               <FieldContent>
-                <Textarea id="notes" rows={2} {...register("notes")} />
+                <Textarea id="notes" rows={2} maxLength={1000} {...register("notes")} />
               </FieldContent>
             </Field>
 

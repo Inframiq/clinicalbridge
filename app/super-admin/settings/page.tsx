@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
 import { Mail, Phone, Shield } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -9,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { PLATFORM } from "@/lib/config/brand";
+import { useNotificationPreferences } from "@/hooks/use-notification-preferences";
 
 const notificationPrefs = [
   { id: "hospital-verifications", label: "New hospital registrations", description: "A hospital submits documents for review." },
@@ -18,7 +17,7 @@ const notificationPrefs = [
 ];
 
 export default function SuperAdminSettingsPage() {
-  const [prefs, setPrefs] = useState<Record<string, boolean>>({
+  const { prefs, setPref, save: savePrefs, saving: savingPrefs } = useNotificationPreferences({
     "hospital-verifications": true,
     "doctor-verifications": true,
     disputes: true,
@@ -72,14 +71,16 @@ export default function SuperAdminSettingsPage() {
                   </div>
                   <Switch
                     checked={prefs[pref.id]}
-                    onCheckedChange={(checked) => setPrefs((p) => ({ ...p, [pref.id]: checked }))}
+                    onCheckedChange={(checked) => setPref(pref.id, checked)}
                   />
                 </div>
               ))}
             </div>
             <Separator className="my-4" />
             <div className="flex justify-end">
-              <Button onClick={() => toast.success("Preferences saved")}>Save Preferences</Button>
+              <Button onClick={savePrefs} disabled={savingPrefs}>
+                {savingPrefs ? "Saving..." : "Save Preferences"}
+              </Button>
             </div>
           </CardContent>
         </Card>
