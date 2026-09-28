@@ -74,23 +74,22 @@ export async function createNotificationInSupabase(
   }
   client ??= createClient();
   try {
-    const { data, error } = await client
-      .from("notifications")
-      .insert({
-        id: notification.id,
-        user_id: userId,
-        title: notification.title,
-        body: notification.body,
-        type: notification.type,
-        read: false,
-      })
-      .select()
-      .single();
+    // No `.select()`: the recipient is usually someone else, and only the
+    // recipient may read a notification, so asking for the row back would make
+    // PostgREST reject an insert RLS actually allowed.
+    const { error } = await client.from("notifications").insert({
+      id: notification.id,
+      user_id: userId,
+      title: notification.title,
+      body: notification.body,
+      type: notification.type,
+      read: false,
+    });
     if (error) {
       reportSupabase(`createNotificationInSupabase(${notification.id})`, error);
       return { data: null, error: describeSupabaseError(error) };
     }
-    return { data, error: null };
+    return { data: null, error: null };
   } catch (err) {
     reportSupabase(`createNotificationInSupabase(${notification.id})`, err);
     return { data: null, error: describeSupabaseError(err) };
