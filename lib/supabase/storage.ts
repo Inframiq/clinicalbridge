@@ -161,3 +161,32 @@ export async function uploadDocumentToStorage(
     return { data: null, error };
   }
 }
+
+/** How long a document preview link stays valid. Re-signed on every mount. */
+const SIGNED_URL_TTL_SECONDS = 60 * 60;
+
+/**
+ * The `documents` bucket is private (migration 021) — credentials, licenses
+ * and IDs must never be reachable by a bare URL. Every preview asks Storage for
+ * a short-lived signed URL instead, which Storage only issues if the caller
+ * passes the bucket's SELECT policy (owner or super admin).
+ */
+export async function getSignedDocumentUrl(
+  path: string
+): Promise<{ data: string | null; error: Error | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  try {
+    const { data, error } = await createClient()
+      .storage.from("documents")
+      .createSignedUrl(path, SIGNED_URL_TTL_SECONDS);
+    if (error) {
+      reportSupabase("getSignedDocumentUrl", error);
+      return { data: null, error };
+    }
+    return { data: data?.signedUrl ?? null, error: null };
+  } catch (err: unknown) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    reportSupabase("getSignedDocumentUrl", error);
+    return { data: null, error };
+  }
+}

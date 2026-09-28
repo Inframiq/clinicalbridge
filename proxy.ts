@@ -5,7 +5,11 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from "@/lib/sup
 const PROTECTED = ["/hospital", "/working-doctor", "/locum-tenens", "/super-admin"];
 
 export async function proxy(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.next();
+  // Fail closed: every matched path is a protected role section, and without
+  // Supabase there is no way to authenticate the request.
+  if (!isSupabaseConfigured) {
+    return new NextResponse("Service unavailable: authentication is not configured.", { status: 503 });
+  }
 
   let response = NextResponse.next({ request: { headers: request.headers } });
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {

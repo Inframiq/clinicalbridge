@@ -20,7 +20,13 @@ import type { UserRole } from "@/types";
  * button, typed address) instead of going through login's redirect.
  */
 export async function requireApprovedRole(requiredRole: UserRole): Promise<UserProfile | null> {
-  if (!isSupabaseConfigured) return null;
+  // Fail closed. NEXT_PUBLIC_* are inlined at build time, so a build made
+  // without them would otherwise skip this gate and expose every role section.
+  if (!isSupabaseConfigured) {
+    throw new Error(
+      "Supabase is not configured: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be set at build time."
+    );
+  }
 
   const supabase = await createClient();
   const {

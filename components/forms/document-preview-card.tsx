@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { useSignedDocument } from "@/hooks/use-signed-document";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 
 export const STATUS_META: Record<
@@ -44,9 +45,11 @@ interface PreviewKind {
   isPdf: boolean;
   isLocalOnly: boolean;
   hasUrl: boolean;
+  /** Signed URL still being fetched — not the same as "no URL". */
+  isLoading: boolean;
 }
 
-function classifyFile(file: UploadedFileMetadata): PreviewKind {
+function classifyFile(file: UploadedFileMetadata, isLoading = false): PreviewKind {
   // Fall back to sniffing the extension when the stored MIME type is missing
   // (older uploads, or a compress step that dropped it).
   const ext = (file.name || file.path || "").split(".").pop()?.toLowerCase() ?? "";
@@ -55,7 +58,7 @@ function classifyFile(file: UploadedFileMetadata): PreviewKind {
   const isPdf = file.type === "application/pdf" || ext === "pdf";
   const isLocalOnly = file.publicUrl?.startsWith("blob:") ?? false;
   const hasUrl = !!file.publicUrl && !isLocalOnly;
-  return { isImage, isPdf, isLocalOnly, hasUrl };
+  return { isImage, isPdf, isLocalOnly, hasUrl, isLoading };
 }
 
 function DocumentMedia({
@@ -69,8 +72,15 @@ function DocumentMedia({
   kind: PreviewKind;
   mediaClassName: string;
 }) {
-  const { isImage, isPdf, isLocalOnly, hasUrl } = kind;
+  const { isImage, isPdf, isLocalOnly, hasUrl, isLoading } = kind;
 
+  if (isLoading) {
+    return (
+      <div className="rounded-md bg-muted px-3 py-4 text-center text-sm text-muted-foreground">
+        Loading document…
+      </div>
+    );
+  }
   if (isLocalOnly) {
     return (
       <div className="rounded-md bg-warning/10 px-3 py-4 text-center text-sm text-warning">
@@ -215,6 +225,7 @@ export function DecisionButtons({
 function FullscreenDocumentViewer({
   label,
   file,
+  loading,
   status,
   reviewedAt,
   viewedAt,
@@ -231,6 +242,7 @@ function FullscreenDocumentViewer({
 }: {
   label: string;
   file: UploadedFileMetadata;
+  loading: boolean;
   status: DocumentReviewStatus;
   reviewedAt?: string;
   viewedAt?: string;
@@ -246,7 +258,7 @@ function FullscreenDocumentViewer({
   onClose: () => void;
 }) {
   const meta = STATUS_META[status];
-  const kind = classifyFile(file);
+  const kind = classifyFile(file, loading);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -335,7 +347,7 @@ function FullscreenDocumentViewer({
 
 export function DocumentPreviewCard({
   label,
-  file,
+  file: storedFile,
   status,
   reviewedAt,
   viewedAt,
@@ -357,12 +369,14 @@ export function DocumentPreviewCard({
   onReject: (reason: string) => void;
   onView: () => void;
 }) {
+  const signed = useSignedDocument(storedFile);
+  const file = signed.file;
   const [open, setOpen] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [confirmingReject, setConfirmingReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const meta = STATUS_META[status];
-  const kind = classifyFile(file);
+  const kind = classifyFile(file, signed.loading);
 
   // The inline preview defaults open, so the document is already on screen
   // the moment this card mounts — that counts as "accessed" just as much as
@@ -502,6 +516,7 @@ export function DocumentPreviewCard({
           <FullscreenDocumentViewer
             label={label}
             file={file}
+            loading={signed.loading}
             status={status}
             reviewedAt={reviewedAt}
             viewedAt={viewedAt}
