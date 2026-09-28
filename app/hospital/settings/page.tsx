@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Building2, Mail, MapPin, Phone } from "lucide-react";
+import { AccountDataCard } from "@/components/settings/account-data-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -88,6 +89,7 @@ export default function AdminSettingsPage() {
         <TabsList>
           <TabsTrigger value="organization">Organization Profile</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="organization" className="mt-6 max-w-2xl">
@@ -211,6 +213,10 @@ export default function AdminSettingsPage() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="privacy" className="mt-6 max-w-2xl">
+          <AccountDataCard />
         </TabsContent>
       </Tabs>
     </div>

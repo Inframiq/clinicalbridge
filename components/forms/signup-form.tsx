@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Lock, Mail, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -31,6 +32,7 @@ const schema = z.object({
   email: emailField,
   password: passwordField,
   confirmPassword: z.string(),
+  acceptTerms: z.boolean().refine((v) => v, "You must accept the Terms of Service and Privacy Policy"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -103,10 +105,11 @@ export function SignupForm() {
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { fullName: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: { fullName: "", email: "", password: "", confirmPassword: "", acceptTerms: false },
   });
 
   async function onSubmit(data: FormValues) {
@@ -306,6 +309,36 @@ export function SignupForm() {
             </FieldContent>
           </Field>
 
+          <Field>
+            <div className="flex items-start gap-2">
+              <Controller
+                control={control}
+                name="acceptTerms"
+                render={({ field }) => (
+                  <Checkbox
+                    id="acceptTerms"
+                    className="mt-0.5"
+                    checked={field.value}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                    aria-invalid={!!errors.acceptTerms}
+                  />
+                )}
+              />
+              <label htmlFor="acceptTerms" className="text-sm text-muted-foreground">
+                I agree to the{" "}
+                <Link href="/terms" target="_blank" className="font-medium text-brand hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="font-medium text-brand hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </label>
+            </div>
+            <FieldError errors={[errors.acceptTerms]} />
+          </Field>
+
           <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
             Sign Up
           </Button>
@@ -320,6 +353,12 @@ export function SignupForm() {
               <MicrosoftIcon /> Microsoft
             </Button>
           </div>
+
+          <FieldDescription className="text-center text-xs">
+            By continuing with Google or Microsoft you agree to the{" "}
+            <Link href="/terms" className="hover:underline">Terms of Service</Link> and{" "}
+            <Link href="/privacy" className="hover:underline">Privacy Policy</Link>.
+          </FieldDescription>
 
           <FieldDescription className="text-center">
             Already have an account?{" "}

@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import { CalendarDays, CalendarCheck, ClipboardList, CheckCircle2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { LicenseExpiryAlert } from "@/components/dashboard/license-expiry-alert";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
@@ -46,6 +47,8 @@ export default function WorkingDoctorDashboardPage() {
         title={`Good morning${myDoctor ? `, Dr. ${myDoctor.lastName}` : ""} 👋`}
         description="Here's your schedule and any coverage that needs attention."
       />
+
+      <LicenseExpiryAlert licenseExpiry={myDoctor?.licenseExpiry} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Today's Shifts" value={String(today.length)} icon={CalendarCheck} iconTone="brand" />

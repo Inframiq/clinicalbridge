@@ -5,6 +5,7 @@ import type { UserRole } from "@/types";
 import { useLocalStorageState, clearAllLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { LEGAL_VERSION } from "@/lib/legal";
 import { reportSupabase } from "@/lib/supabase/log";
 import { SELF_SERVE_ROLES } from "@/lib/roles";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
@@ -319,6 +320,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data: {
               role,
               full_name: fullName,
+              // The signup form won't submit until the terms box is ticked;
+              // this records which version was agreed to, and when.
+              terms_version: LEGAL_VERSION,
+              terms_accepted_at: new Date().toISOString(),
             },
           },
         });

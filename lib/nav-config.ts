@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Store,
   Bell,
+  ScrollText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -78,6 +79,7 @@ export const superAdminNavItems: NavItem[] = [
   { label: "Hospital Verification", href: "/super-admin/hospitals", icon: Building2 },
   { label: "Doctor Verification", href: "/super-admin/doctors", icon: Users },
   { label: "Analytics", href: "/super-admin/analytics", icon: BarChart3 },
+  { label: "Audit Log", href: "/super-admin/audit-log", icon: ScrollText },
   { label: "Settings", href: "/super-admin/settings", icon: Settings },
 ];
 

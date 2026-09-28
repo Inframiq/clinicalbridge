@@ -53,7 +53,7 @@ export default function ShiftHubPage() {
       toast.error("Couldn't find the facility to notify.");
       return;
     }
-    const sent = await createNotification(shiftFacility.profileId, { title, body, type: "info" });
+    const sent = await createNotification(shiftFacility.profileId, { title, body, type: "info", topic: "shift-status" });
     if (sent) toast.success(successMessage);
   }
 

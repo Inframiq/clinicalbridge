@@ -188,6 +188,8 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
   type: "info" | "success" | "warning" | "danger";
+  /** Notification-preference key (e.g. "shift-invites") used to decide whether to email it. */
+  topic?: string;
 }
 
 export interface Patient {

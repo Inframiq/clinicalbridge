@@ -14,6 +14,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { LicenseExpiryAlert } from "@/components/dashboard/license-expiry-alert";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
@@ -98,6 +99,8 @@ export default function DoctorDashboardPage() {
           </Button>
         }
       />
+
+      <LicenseExpiryAlert licenseExpiry={myDoctor?.licenseExpiry} updateHref="/locum-tenens/settings" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard

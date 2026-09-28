@@ -6,6 +6,7 @@ import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX, UserRound } from "lu
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { licenseExpiryStatus } from "@/lib/license-expiry";
 import { Person } from "@/components/dashboard/person";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table/data-table";
@@ -62,6 +63,16 @@ export default function SuperAdminDoctorsPage() {
       {
         accessorKey: "licenseNumber",
         header: "Registration No.",
+        cell: ({ row }) => {
+          const { state, daysLeft } = licenseExpiryStatus(row.original.licenseExpiry);
+          return (
+            <div>
+              <p>{row.original.licenseNumber || "—"}</p>
+              {state === "expired" && <StatusBadge label="Licence expired" tone="danger" />}
+              {state === "expiring" && <StatusBadge label={`Expires in ${daysLeft}d`} tone="warning" />}
+            </div>
+          );
+        },
       },
       {
         id: "profile",

@@ -186,7 +186,7 @@ interface AppDataContextValue {
   /** Sends a notification to another user (invite, report, etc). Resolves false (and toasts) on failure. */
   createNotification: (
     recipientProfileId: string,
-    notification: Pick<AppNotification, "title" | "body" | "type">
+    notification: Pick<AppNotification, "title" | "body" | "type" | "topic">
   ) => Promise<boolean>;
   registerDoctor: (input: NewDoctorInput) => Promise<Doctor>;
   registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: DoctorKind) => Promise<Doctor>;
@@ -680,7 +680,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   // slice - that slice is this signed-in user's own inbox, and the
   // recipient here is someone else entirely.
   const createNotification = React.useCallback(
-    async (recipientProfileId: string, notification: Pick<AppNotification, "title" | "body" | "type">) => {
+    async (recipientProfileId: string, notification: Pick<AppNotification, "title" | "body" | "type" | "topic">) => {
       const { error } = await createNotificationInSupabase(recipientProfileId, {
         id: crypto.randomUUID(),
         ...notification,

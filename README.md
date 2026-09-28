@@ -17,14 +17,19 @@ Checks (the same ones CI runs):
 npm run lint && npm run typecheck && npm test && npm run build
 ```
 
+`tests/db/` applies every migration to an in-process Postgres (PGlite) and
+checks the row-level security policies and write guards as each role (allowed
+app flows and blocked abuse). Add a case there whenever you change a policy.
+
 ## Deploying to production
 
 ### 1. Supabase (production project, separate from dev)
 
 1. Create a new project. Pick the region closest to your users.
 2. **Take a backup** of any existing data, then apply every file in
-   `supabase/migrations/` **in numeric order** (SQL Editor, or
-   `npx supabase link --project-ref <ref> && npx supabase db push`).
+   `supabase/migrations/` **in numeric order** (SQL Editor, or the
+   "DB migrate" GitHub workflow described below). Run 022 on its own before
+   023 (it adds an enum value that 023 uses).
 3. Check that the `documents` storage bucket exists and is **private**
    (migration 021). Documents are served only through short-lived signed URLs.
 4. **Authentication → URL Configuration**
@@ -38,6 +43,10 @@ npm run lint && npm run typecheck && npm test && npm run build
    and CAPTCHA once the frontend supports it.
 8. Sign up with the designated super-admin email hardcoded in migration 018.
    The database promotes that account to super admin automatically.
+
+9. **Email notifications** (optional until you have an email provider): deploy
+   the Edge Function and create the database webhook. The steps are at the top
+   of `supabase/functions/send-notification-email/index.ts`.
 
 ### 2. Vercel
 
@@ -65,6 +74,24 @@ npm run lint && npm run typecheck && npm test && npm run build
 - Post a shift, then apply, accept and complete it, and submit a payout.
 - Send a message between two accounts and check that it arrives live.
 - Open the browser console. There should be no CSP violations.
+
+### Database migrations from CI
+
+`.github/workflows/db-migrate.yml` is a manually triggered workflow that runs
+the RLS test suite and then `supabase db push`. Set `SUPABASE_ACCESS_TOKEN`,
+`SUPABASE_DB_PASSWORD` and `SUPABASE_PROJECT_REF` as secrets on a GitHub
+environment (`staging` / `production`). If some migrations were already applied
+by hand, mark them first so they aren't re-run:
+
+```bash
+npx supabase migration repair --status applied 001 002 003 ...
+```
+
+### Before launch
+
+- Fill in `LEGAL` in `lib/config/brand.ts` and have a lawyer review `/terms`
+  and `/privacy`. Bump `LEGAL_VERSION` in `lib/legal.ts` whenever they change.
+  The version each user accepted is stored in their auth metadata.
 
 Security headers (CSP, HSTS, frame, referrer and permissions policies) are
 defined in `next.config.ts`. If you add a new third-party origin (analytics,

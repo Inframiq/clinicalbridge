@@ -97,6 +97,7 @@ export default function SmartMatchesPage() {
                             title: "Shift invitation",
                             body: `${myFacility?.name ?? "A hospital"} invited you to apply for "${selectedShift.title}" (${formatDate(selectedShift.date)}).`,
                             type: "info",
+                            topic: "shift-invites",
                           });
                           if (sent) toast.success(`Invitation sent to Dr. ${doctor.lastName}`);
                         }}

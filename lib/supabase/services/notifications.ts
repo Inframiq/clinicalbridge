@@ -63,7 +63,7 @@ export async function markNotificationReadInSupabase(
 
 export async function createNotificationInSupabase(
   userId: string,
-  notification: Pick<AppNotification, "id" | "title" | "body" | "type">,
+  notification: Pick<AppNotification, "id" | "title" | "body" | "type" | "topic">,
   client?: SupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
@@ -83,6 +83,7 @@ export async function createNotificationInSupabase(
       title: notification.title,
       body: notification.body,
       type: notification.type,
+      topic: notification.topic ?? null,
       read: false,
     });
     if (error) {

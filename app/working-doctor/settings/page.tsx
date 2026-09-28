@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Mail, Phone, User } from "lucide-react";
+import { AccountDataCard } from "@/components/settings/account-data-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -288,6 +289,8 @@ export default function WorkingDoctorSettingsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <AccountDataCard />
       </div>
     </div>
   );
