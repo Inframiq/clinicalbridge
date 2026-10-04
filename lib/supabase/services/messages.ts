@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Message, MessageThread } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
@@ -30,7 +30,7 @@ function mapMessageRow(item: Record<string, any>): Message {
 
 export async function getThreadsForUser(
   userId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: MessageThread[]; error: string | null }> {
   if (!isSupabaseConfigured || !isUuid(userId)) return { data: [], error: null };
   client ??= createClient();
@@ -54,7 +54,7 @@ export async function getThreadsForUser(
 
 export async function getMessagesForThread(
   threadId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Message[]; error: string | null }> {
   if (!isSupabaseConfigured || !isUuid(threadId)) return { data: [], error: null };
   client ??= createClient();
@@ -86,7 +86,7 @@ export async function getMessagesForThread(
  */
 export async function getProfileDisplayNames(
   profileIds: string[],
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<Record<string, string>> {
   const ids = Array.from(new Set(profileIds.filter(isUuid)));
   if (!isSupabaseConfigured || ids.length === 0) return {};
@@ -117,7 +117,7 @@ export async function getProfileDisplayNames(
 export async function startOrGetThread(
   profileA: string,
   profileB: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: MessageThread | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileA) || !isUuid(profileB) || profileA === profileB) {
@@ -160,7 +160,7 @@ export async function sendMessageInSupabase(
   threadId: string,
   senderId: string,
   body: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Message | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(threadId) || !isUuid(senderId) || !body.trim()) {
@@ -194,7 +194,7 @@ export async function sendMessageInSupabase(
 export async function markThreadReadInSupabase(
   threadId: string,
   readerId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: null };
   if (!isUuid(threadId) || !isUuid(readerId)) return { error: null };

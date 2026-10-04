@@ -1,13 +1,13 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { SavedShift } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
 export async function createSavedShiftInSupabase(
   savedShift: SavedShift,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(savedShift.id) || !isUuid(savedShift.doctorId) || !isUuid(savedShift.shiftId)) {
@@ -40,7 +40,7 @@ export async function createSavedShiftInSupabase(
 export async function deleteSavedShiftInSupabase(
   doctorId: string,
   shiftId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(doctorId) || !isUuid(shiftId)) {

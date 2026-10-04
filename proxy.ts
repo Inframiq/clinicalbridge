@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_URL, SUPABASE_ANON_KEY, isSupabaseConfigured } from "@/lib/supabase/env";
+import type { Database } from "@/lib/supabase/database.types";
 
 const PROTECTED = ["/hospital", "/working-doctor", "/locum-tenens", "/super-admin"];
 
@@ -12,7 +13,7 @@ export async function proxy(request: NextRequest) {
   }
 
   let response = NextResponse.next({ request: { headers: request.headers } });
-  const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const supabase = createServerClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (toSet) => {

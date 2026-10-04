@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { HospitalVerification } from "@/types";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
@@ -65,7 +65,7 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
 }
 
 export async function getFacilities(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Facility[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -93,7 +93,7 @@ export async function getFacilities(
 export async function updateFacilityProfileInSupabase(
   id: string,
   patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -101,7 +101,7 @@ export async function updateFacilityProfileInSupabase(
       reportSupabase("updateFacilityProfileInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"facilities"> = {};
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.address !== undefined) update.address = patch.address;
   if (patch.city !== undefined) update.city = patch.city;
@@ -132,7 +132,7 @@ export async function updateFacilityProfileInSupabase(
 export async function updateFacilityVerificationInSupabase(
   id: string,
   verification: HospitalVerification,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -166,7 +166,7 @@ export async function updateFacilityVerificationInSupabase(
 export async function updateFacilityDocumentsInSupabase(
   id: string,
   uploadedDocuments: Record<string, UploadedFileMetadata>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -202,7 +202,7 @@ export async function updateFacilityBasicInfoReviewInSupabase(
   id: string,
   decision: Exclude<DocumentReviewStatus, "pending">,
   reason: string | undefined,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -242,7 +242,7 @@ export async function updateFacilityBasicInfoReviewInSupabase(
 export async function updateFacilityRegistrationStatusInSupabase(
   profileId: string | undefined,
   status: "Approved" | "Rejected" | "Needs Changes",
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileId)) {

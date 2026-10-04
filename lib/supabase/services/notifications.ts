@@ -1,14 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { AppNotification } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapNotificationRow } from "../mappers";
 
 export async function getNotifications(
   userId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: AppNotification[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   if (!isUuid(userId)) return { data: [], error: null };
@@ -34,7 +34,7 @@ export async function getNotifications(
 
 export async function markNotificationReadInSupabase(
   id: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -64,7 +64,7 @@ export async function markNotificationReadInSupabase(
 export async function createNotificationInSupabase(
   userId: string,
   notification: Pick<AppNotification, "id" | "title" | "body" | "type" | "topic">,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(userId) || !isUuid(notification.id)) {

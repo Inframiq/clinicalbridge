@@ -12,30 +12,30 @@ export type ExperienceLevel = "Entry Level" | "Mid Level+" | "Senior" | "Expert"
 
 export type EmploymentType = "Independent / Locum" | "W2 Contract" | "Full-Time";
 
-export interface GeoLocation {
+export type GeoLocation = {
   address: string;
   city: string;
   state: string;
   lat: number;
   lng: number;
-}
+};
 
 export type DoctorKind = "working" | "locum_tenens";
 
-export interface DoctorVerification {
+export type DoctorVerification = {
   medicalCouncil: boolean;
   degree: boolean;
   identity: boolean;
   hospitalApproval: boolean;
-}
+};
 
-export interface HospitalVerification {
+export type HospitalVerification = {
   governmentRegistration: boolean;
   medicalLicense: boolean;
   taxRegistration: boolean;
   accreditation: boolean;
   authorizedSignatory: boolean;
-}
+};
 
 export interface ReplacementPreferences {
   preferredTravelDistanceMiles?: number;

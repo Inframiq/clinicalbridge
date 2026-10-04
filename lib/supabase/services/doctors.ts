@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Doctor, DoctorVerification } from "@/types";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { asJsonObject, type TablesUpdate, type TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
@@ -46,7 +46,7 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
 }
 
 export async function getDoctors(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Doctor[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -75,7 +75,7 @@ export async function updateDoctorVerificationInSupabase(
   id: string,
   verification: DoctorVerification,
   verified: boolean,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -90,7 +90,7 @@ export async function updateDoctorVerificationInSupabase(
       .select("verification_details")
       .eq("id", id)
       .maybeSingle();
-    const merged = { ...(existing?.verification_details || {}), ...verification };
+    const merged = { ...asJsonObject(existing?.verification_details), ...verification };
     const { data, error } = await client
       .from("doctors")
       .update({ verified, verification_details: merged })
@@ -117,7 +117,7 @@ export async function updateDoctorBasicInfoReviewInSupabase(
   id: string,
   decision: Exclude<DocumentReviewStatus, "pending">,
   reason: string | undefined,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -157,7 +157,7 @@ export async function updateDoctorBasicInfoReviewInSupabase(
 export async function updateDoctorRegistrationStatusInSupabase(
   profileId: string | undefined,
   status: "Approved" | "Rejected" | "Needs Changes",
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileId)) {
@@ -189,7 +189,7 @@ export async function updateDoctorProfileInSupabase(
   patch: Partial<
     Pick<Doctor, "specialty" | "subSpecialty" | "licenseNumber" | "licenseExpiry" | "yearsOfExperience" | "preferredLocations">
   >,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -197,7 +197,7 @@ export async function updateDoctorProfileInSupabase(
       reportSupabase("updateDoctorProfileInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"doctors"> = {};
   if (patch.specialty !== undefined) update.specialty = patch.specialty;
   if (patch.subSpecialty !== undefined) update.sub_specialty = patch.subSpecialty;
   if (patch.licenseNumber !== undefined) update.license_number = patch.licenseNumber;
@@ -232,7 +232,7 @@ export async function updateDoctorProfileInSupabase(
 export async function updateDoctorDocumentsInSupabase(
   id: string,
   uploadedDocuments: Record<string, UploadedFileMetadata>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {

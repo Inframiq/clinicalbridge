@@ -8,7 +8,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { LEGAL_VERSION } from "@/lib/legal";
 import { reportSupabase } from "@/lib/supabase/log";
 import { SELF_SERVE_ROLES } from "@/lib/roles";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 
 export interface UserProfile {
   id: string;
@@ -82,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Offline mode has no async auth bootstrap, so there is nothing to wait for.
   const [loading, setLoading] = React.useState<boolean>(isSupabaseConfigured);
 
-  const supabase = React.useMemo<SupabaseClient | null>(
+  const supabase = React.useMemo<TypedSupabaseClient | null>(
     () => (isSupabaseConfigured ? createClient() : null),
     []
   );

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/client";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { asJsonObject, type TypedSupabaseClient } from "@/lib/supabase/types";
 import { reportSupabase, describeSupabaseError } from "../log";
 
 export interface AuditEntry {
@@ -16,7 +16,7 @@ export interface AuditEntry {
 /** Most recent audit entries. RLS restricts this to the super admin (migration 024). */
 export async function getAuditLog(
   limit = 500,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: AuditEntry[]; error: string | null }> {
   client ??= createClient();
   try {
@@ -38,7 +38,7 @@ export async function getAuditLog(
         action: row.action,
         targetTable: row.target_table,
         targetId: row.target_id,
-        changes: row.changes ?? {},
+        changes: asJsonObject(row.changes),
       })),
       error: null,
     };

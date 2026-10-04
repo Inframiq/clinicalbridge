@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Department } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
@@ -15,7 +15,7 @@ export function mapDepartmentRow(item: Record<string, any>): Department {
 }
 
 export async function getDepartments(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Department[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -34,7 +34,7 @@ export async function getDepartments(
 
 export async function createDepartmentInSupabase(
   department: Department,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(department.id) || !isUuid(department.facilityId)) {
@@ -63,7 +63,7 @@ export async function createDepartmentInSupabase(
 export async function renameDepartmentInSupabase(
   id: string,
   name: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) return { data: null, error: null };
@@ -83,7 +83,7 @@ export async function renameDepartmentInSupabase(
 
 export async function deleteDepartmentInSupabase(
   id: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ error: string | null }> {
   if (!isSupabaseConfigured) return { error: null };
   if (!isUuid(id)) return { error: null };

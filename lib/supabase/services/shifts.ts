@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Shift, ReplacementRequest, Application } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapShiftRow } from "../mappers";
@@ -35,7 +35,7 @@ export function mapApplicationRow(item: Record<string, any>): Application {
 }
 
 export async function getShifts(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Shift[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -58,7 +58,7 @@ export async function getShifts(
 }
 
 export async function getReplacementRequests(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: ReplacementRequest[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -81,7 +81,7 @@ export async function getReplacementRequests(
 }
 
 export async function getApplications(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Application[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -105,7 +105,7 @@ export async function getApplications(
 
 export async function createShiftInSupabase(
   shift: Shift,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(shift.id) || !isUuid(shift.facilityId)) {
@@ -152,7 +152,7 @@ export async function createShiftInSupabase(
 export async function updateShiftStatusInSupabase(
   id: string,
   status: Shift["status"],
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -182,7 +182,7 @@ export async function updateShiftStatusInSupabase(
 export async function updateShiftAssignmentInSupabase(
   shiftId: string,
   patch: { assignedDoctorId?: string | null; status?: Shift["status"] },
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(shiftId)) {
@@ -190,7 +190,7 @@ export async function updateShiftAssignmentInSupabase(
       reportSupabase("updateShiftAssignmentInSupabase: skipped non-uuid id", shiftId);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"shifts"> = {};
   if (patch.assignedDoctorId !== undefined) update.assigned_doctor_id = patch.assignedDoctorId;
   if (patch.status !== undefined) update.status = patch.status;
   if (Object.keys(update).length === 0) return { data: null, error: null };
@@ -216,7 +216,7 @@ export async function updateShiftAssignmentInSupabase(
 
 export async function createReplacementRequestInSupabase(
   req: ReplacementRequest,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(req.id) || !isUuid(req.shiftId) || !isUuid(req.requestingDoctorId)) {
@@ -254,7 +254,7 @@ export async function createReplacementRequestInSupabase(
 export async function updateReplacementRequestStatusInSupabase(
   id: string,
   status: ReplacementRequest["status"],
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -284,7 +284,7 @@ export async function updateReplacementRequestStatusInSupabase(
 export async function modifyReplacementRequestInSupabase(
   id: string,
   patch: Partial<Pick<ReplacementRequest, "hourlyCompensation" | "notes">>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -292,7 +292,7 @@ export async function modifyReplacementRequestInSupabase(
       reportSupabase("modifyReplacementRequestInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"replacement_requests"> = {};
   if (patch.hourlyCompensation !== undefined) update.hourly_compensation = patch.hourlyCompensation;
   if (patch.notes !== undefined) update.notes = patch.notes;
   if (Object.keys(update).length === 0) return { data: null, error: null };
@@ -318,7 +318,7 @@ export async function modifyReplacementRequestInSupabase(
 
 export async function createApplicationInSupabase(
   app: Application,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(app.id) || !isUuid(app.shiftId) || !isUuid(app.doctorId)) {
@@ -353,7 +353,7 @@ export async function createApplicationInSupabase(
 export async function updateApplicationStatusInSupabase(
   id: string,
   status: Application["status"],
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {

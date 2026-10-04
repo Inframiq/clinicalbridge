@@ -299,7 +299,7 @@ export function OnboardingWizard() {
           const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
 
           const doctorFields = {
-            doctor_kind: "locum_tenens",
+            doctor_kind: "locum_tenens" as const,
             first_name: values.firstName,
             last_name: values.lastName,
             specialty: values.primarySpecialty,

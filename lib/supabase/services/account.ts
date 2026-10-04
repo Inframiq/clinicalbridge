@@ -1,10 +1,10 @@
 import { createClient } from "@/lib/supabase/client";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { reportSupabase, describeSupabaseError } from "../log";
 
 /** Everything the platform holds about the signed-in user (migration 025). */
 export async function exportMyData(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   client ??= createClient();
   try {
@@ -25,7 +25,7 @@ export async function exportMyData(
  * Must go through the Storage API - deleting storage.objects rows from SQL
  * would leave the files themselves behind.
  */
-async function deleteMyDocuments(client: SupabaseClient, userId: string): Promise<string | null> {
+async function deleteMyDocuments(client: TypedSupabaseClient, userId: string): Promise<string | null> {
   const bucket = client.storage.from("documents");
   const paths: string[] = [];
   const pending = [userId];
@@ -53,7 +53,7 @@ async function deleteMyDocuments(client: SupabaseClient, userId: string): Promis
  */
 export async function deleteMyAccount(
   userId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: "deleted" | "anonymised" | null; error: string | null }> {
   client ??= createClient();
   try {

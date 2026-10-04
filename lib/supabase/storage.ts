@@ -4,7 +4,7 @@ import { reportSupabase } from "./log";
 
 export type DocumentReviewStatus = "pending" | "approved" | "rejected";
 
-export interface UploadedFileMetadata {
+export type UploadedFileMetadata = {
   name: string;
   path: string;
   publicUrl: string;
@@ -22,7 +22,7 @@ export interface UploadedFileMetadata {
   viewedAt?: string;
   /** Required free-text reason a super admin gave when rejecting this document. */
   rejectionReason?: string;
-}
+};
 
 /**
  * Helper to compress images on client side before uploading to Storage
