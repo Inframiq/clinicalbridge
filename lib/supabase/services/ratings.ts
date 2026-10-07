@@ -1,13 +1,13 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Rating } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Tables, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapRatingRow } from "../mappers";
 
 export async function getRatings(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Rating[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -31,8 +31,8 @@ export async function getRatings(
 
 export async function createRatingInSupabase(
   rating: Rating,
-  client?: SupabaseClient
-): Promise<{ data: unknown; error: string | null }> {
+  client?: TypedSupabaseClient
+): Promise<{ data: Tables<"ratings"> | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (
     !isUuid(rating.id) ||

@@ -13,8 +13,10 @@ import { BroadcastShiftDialog } from "@/components/forms/broadcast-shift-dialog"
 import { Button } from "@/components/ui/button";
 import { Radio, Inbox } from "lucide-react";
 import { useShifts } from "@/hooks/use-shifts";
-import { shiftTimeline } from "@/lib/mock-data/notifications";
-import type { ShiftStatus } from "@/types";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAttendance } from "@/hooks/use-attendance";
+import { formatDate } from "@/lib/format";
+import type { ShiftStatus, TimelineEvent } from "@/types";
 
 const tabs: { value: string; label: string; statuses: ShiftStatus[] }[] = [
   { value: "active", label: "Active Shifts", statuses: ["active"] },
@@ -25,6 +27,8 @@ const tabs: { value: string; label: string; statuses: ShiftStatus[] }[] = [
 
 export default function ActiveShiftsPage() {
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
+  const { attendanceRecords } = useAttendance();
   const [tab, setTab] = useState("active");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -35,6 +39,42 @@ export default function ActiveShiftsPage() {
 
   const selectedShift =
     filteredShifts.find((s) => s.id === selectedId) ?? filteredShifts[0] ?? null;
+
+  const timelineEvents = useMemo<TimelineEvent[]>(() => {
+    if (!selectedShift) return [];
+    const events: TimelineEvent[] = [
+      { id: `${selectedShift.id}-broadcast`, label: "Shift broadcast", timestamp: formatDate(selectedShift.date), status: "done" },
+    ];
+    const attendance = attendanceRecords.find((r) => r.shiftId === selectedShift.id);
+    if (attendance?.checkInTime) {
+      events.push({
+        id: `${attendance.id}-checkin`,
+        label: "Doctor checked in",
+        timestamp: new Date(attendance.checkInTime).toLocaleString(),
+        status: "done",
+      });
+    }
+    if (attendance?.checkOutTime) {
+      events.push({
+        id: `${attendance.id}-checkout`,
+        label: "Doctor checked out",
+        timestamp: new Date(attendance.checkOutTime).toLocaleString(),
+        status: "done",
+      });
+    }
+    if (attendance?.status === "verified") {
+      events.push({
+        id: `${attendance.id}-verified`,
+        label: "Attendance verified",
+        timestamp: attendance.verifiedAt ? new Date(attendance.verifiedAt).toLocaleString() : "",
+        status: "done",
+      });
+    }
+    if (selectedShift.status === "active" && !attendance?.checkOutTime) {
+      events.push({ id: `${selectedShift.id}-inprogress`, label: "Shift in progress", timestamp: "", status: "current" });
+    }
+    return events;
+  }, [selectedShift, attendanceRecords]);
 
   return (
     <div>
@@ -102,7 +142,7 @@ export default function ActiveShiftsPage() {
                         <CardTitle className="text-base">Shift Details</CardTitle>
                       </CardHeader>
                       <CardContent>
-                        <ShiftDetailPanel shift={selectedShift} />
+                        <ShiftDetailPanel shift={selectedShift} doctors={doctors} />
                       </CardContent>
                     </Card>
 
@@ -122,7 +162,7 @@ export default function ActiveShiftsPage() {
                           <CardTitle className="text-base">Activity Timeline</CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <Timeline events={shiftTimeline} />
+                          <Timeline events={timelineEvents} />
                         </CardContent>
                       </Card>
                     </div>

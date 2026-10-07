@@ -12,7 +12,8 @@ import { ShiftDetailsSheet } from "@/components/dashboard/shift-details-sheet";
 import { useShifts } from "@/hooks/use-shifts";
 import { useApplications } from "@/hooks/use-applications";
 import { useSavedShifts } from "@/hooks/use-saved-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Shift } from "@/types";
 
@@ -30,17 +31,20 @@ function durationHours(start: string, end: string) {
 }
 
 export default function MarketplacePage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id ?? "";
   const { shifts } = useShifts();
   const { applications, applyToShift } = useApplications();
   const { savedShifts, toggleSaveShift } = useSavedShifts();
   const [tab, setTab] = useState("available");
 
-  const myApplications = applications.filter((a) => a.doctorId === currentDoctor.id);
+  const myApplications = applications.filter((a) => a.doctorId === myDoctorId);
   const appliedShiftIds = new Set(myApplications.map((a) => a.shiftId));
 
   const openShifts = useMemo(() => shifts.filter((s) => s.status === "open"), [shifts]);
   const mySavedShiftIds = new Set(
-    savedShifts.filter((s) => s.doctorId === currentDoctor.id).map((s) => s.shiftId)
+    savedShifts.filter((s) => s.doctorId === myDoctorId).map((s) => s.shiftId)
   );
   const savedShiftList = shifts.filter((s) => mySavedShiftIds.has(s.id));
 
@@ -61,13 +65,12 @@ export default function MarketplacePage() {
               </div>
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <MapPin className="size-3" /> {shift.facilityName}
-                {currentDoctor.distanceMiles != null && ` · ${currentDoctor.distanceMiles} mi away`}
               </p>
             </div>
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => toggleSaveShift(shift.id, currentDoctor.id)}
+              onClick={() => toggleSaveShift(shift.id, myDoctorId)}
               aria-label={saved ? "Unsave shift" : "Save shift"}
             >
               {saved ? <BookmarkCheck className="size-4 text-brand" /> : <Bookmark className="size-4" />}
@@ -92,7 +95,7 @@ export default function MarketplacePage() {
             <p className="text-xs text-muted-foreground">Requires: {shift.requiredQualification}</p>
           )}
           {shift.applicationDeadline && (
-            <p className="text-xs text-warning-foreground">
+            <p className="text-xs text-warning">
               Apply by {formatDate(shift.applicationDeadline)}
             </p>
           )}
@@ -101,9 +104,9 @@ export default function MarketplacePage() {
             <Button
               size="sm"
               className="flex-1"
-              disabled={applied}
+              disabled={applied || !myDoctorId}
               onClick={() => {
-                applyToShift(shift.id, currentDoctor.id);
+                applyToShift(shift.id, myDoctorId);
                 toast.success(`Applied to ${shift.title}`);
               }}
             >
@@ -111,7 +114,7 @@ export default function MarketplacePage() {
             </Button>
             <ShiftDetailsSheet
               shift={shift}
-              currentDoctorId={currentDoctor.id}
+              currentDoctorId={myDoctorId}
               trigger={
                 <Button size="sm" variant="outline">
                   <Eye className="size-4" /> Details

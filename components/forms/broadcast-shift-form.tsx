@@ -22,9 +22,9 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
-import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
 import { formatCurrency, to12Hour } from "@/lib/format";
+import { todayIsoDate } from "@/lib/utils";
+import { currencyField, notesField, optionalTextField } from "@/lib/validation";
 import type { ExperienceLevel, ShiftType } from "@/types";
 
 const shiftTypes: ShiftType[] = [
@@ -39,16 +39,19 @@ const experienceLevels: ExperienceLevel[] = ["Entry Level", "Mid Level+", "Senio
 
 const schema = z
   .object({
-    date: z.string().min(1, "Date is required"),
+    date: z
+      .string()
+      .min(1, "Date is required")
+      .refine((v) => v >= todayIsoDate(), "Date can't be in the past"),
     startTime: z.string().min(1, "Start time is required"),
     endTime: z.string().min(1, "End time is required"),
     department: z.string().min(1, "Select a department"),
     shiftType: z.string().min(1, "Select a shift type"),
-    subSpecialty: z.string().optional(),
-    hourlyRate: z.number().min(1, "Enter a valid rate"),
-    doctorsNeeded: z.number().min(1).max(10),
+    subSpecialty: optionalTextField(60),
+    hourlyRate: currencyField(1, 2000),
+    doctorsNeeded: z.number().int("Must be a whole number").min(1).max(10),
     experienceLevel: z.string().min(1, "Select an experience level"),
-    description: z.string().min(10, "Add a short description of requirements"),
+    description: notesField(10, 1000, "Add a short description of requirements"),
     codeRed: z.boolean(),
   })
   .refine((data) => data.endTime > data.startTime, {
@@ -72,12 +75,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  // Prefer the signed-in hospital's own facility (real accounts); fall back to
-  // the demo "City Medical Center" facility when there's no match (offline
-  // mode, or a super admin/other role previewing this form).
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {
@@ -126,15 +124,17 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   const estimatedTotal = hours * (hourlyRate || 0) * (doctorsNeeded || 0);
 
   async function onSubmit(values: FormValues) {
+    if (!myFacility) {
+      toast.error("Couldn't find your hospital's facility record. Please contact support.");
+      return;
+    }
     try {
       await broadcastShift({
         title: values.department.replace(" Department", "").replace(" Unit", ""),
         department: values.department,
-        facilityId: myFacility?.id ?? CITY_MEDICAL.facilityId,
-        facilityName: myFacility?.name ?? CITY_MEDICAL.facilityName,
-        location: myFacility
-          ? { address: myFacility.name, city: myFacility.city, state: "", lat: 0, lng: 0 }
-          : CITY_MEDICAL.location,
+        facilityId: myFacility.id,
+        facilityName: myFacility.name,
+        location: { address: myFacility.name, city: myFacility.city, state: "", lat: 0, lng: 0 },
         date: values.date,
         startTime: to12Hour(values.startTime),
         endTime: to12Hour(values.endTime),
@@ -161,7 +161,13 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field data-invalid={!!errors.date}>
             <FieldLabel htmlFor="date">Date</FieldLabel>
             <FieldContent>
-              <Input id="date" type="date" {...register("date")} aria-invalid={!!errors.date} />
+              <Input
+                id="date"
+                type="date"
+                min={todayIsoDate()}
+                {...register("date")}
+                aria-invalid={!!errors.date}
+              />
               <FieldError errors={[errors.date]} />
             </FieldContent>
           </Field>
@@ -240,7 +246,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field>
             <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
             <FieldContent>
-              <Input id="subSpecialty" placeholder="e.g. Trauma" {...register("subSpecialty")} />
+              <Input id="subSpecialty" placeholder="e.g. Trauma" maxLength={60} {...register("subSpecialty")} />
             </FieldContent>
           </Field>
           <Field data-invalid={!!errors.hourlyRate}>
@@ -250,6 +256,8 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
                 id="hourlyRate"
                 type="number"
                 min={1}
+                max={2000}
+                step="0.01"
                 {...register("hourlyRate", { valueAsNumber: true })}
               />
               <FieldError errors={[errors.hourlyRate]} />
@@ -320,7 +328,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
           <FieldContent>
             <div className="flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
               <MapPin className="size-4 shrink-0" />
-              {myFacility ? `${myFacility.name}, ${myFacility.city}` : `${ACTIVE_ORGANIZATION.name}, ${ACTIVE_ORGANIZATION.address}`}
+              {myFacility ? `${myFacility.name}, ${myFacility.city}` : "No facility record found for your account"}
             </div>
           </FieldContent>
         </Field>
@@ -331,6 +339,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
             <Textarea
               id="description"
               rows={3}
+              maxLength={1000}
               placeholder="Seeking experienced physicians for this shift. Must have relevant certifications."
               {...register("description")}
             />

@@ -1,14 +1,18 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import type { Doctor, DoctorVerification } from "@/types";
-import type { UploadedFileMetadata } from "@/lib/supabase/storage";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Doctor, DoctorVerification, EmploymentType } from "@/types";
+import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
+import { asJsonObject, type Tables, type TablesUpdate, type TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapDoctorRow(item: Record<string, any>): Doctor {
-  const vd = item.verification_details || {};
+/** A doctors row, optionally joined with its profile (realtime payloads carry no join). */
+export type DoctorRow = Tables<"doctors"> & {
+  profiles?: Pick<Tables<"profiles">, "email" | "phone" | "verification_status"> | null;
+};
+
+export function mapDoctorRow(item: DoctorRow): Doctor {
+  const vd = asJsonObject(item.verification_details);
   const verification: DoctorVerification = {
     medicalCouncil: Boolean(vd.medicalCouncil),
     degree: Boolean(vd.degree),
@@ -28,7 +32,7 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
     licenseExpiry: item.license_expiry ?? "",
     npiNumber: item.npi_number ?? "",
     yearsOfExperience: item.years_of_experience ?? "",
-    employmentType: item.employment_type ?? "Independent / Locum",
+    employmentType: (item.employment_type ?? "Independent / Locum") as EmploymentType,
     preferredLocations: item.preferred_locations ?? [],
     verified,
     email: item.profiles?.email ?? "",
@@ -36,14 +40,17 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
     status: verified ? "active" : "onboarding",
     doctorKind: item.doctor_kind,
     verification,
-    uploadedDocuments: item.uploaded_documents ?? {},
+    uploadedDocuments: (item.uploaded_documents as Record<string, UploadedFileMetadata> | null) ?? {},
     profileId: item.profile_id ?? undefined,
     registrationStatus: item.profiles?.verification_status ?? undefined,
+    basicInfoStatus: (item.basic_info_status ?? "pending") as DocumentReviewStatus,
+    basicInfoReviewedAt: item.basic_info_reviewed_at ?? undefined,
+    basicInfoRejectionReason: item.basic_info_rejection_reason ?? undefined,
   } satisfies Doctor;
 }
 
 export async function getDoctors(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: Doctor[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -72,7 +79,7 @@ export async function updateDoctorVerificationInSupabase(
   id: string,
   verification: DoctorVerification,
   verified: boolean,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -87,7 +94,7 @@ export async function updateDoctorVerificationInSupabase(
       .select("verification_details")
       .eq("id", id)
       .maybeSingle();
-    const merged = { ...(existing?.verification_details || {}), ...verification };
+    const merged = { ...asJsonObject(existing?.verification_details), ...verification };
     const { data, error } = await client
       .from("doctors")
       .update({ verified, verification_details: merged })
@@ -106,6 +113,46 @@ export async function updateDoctorVerificationInSupabase(
 }
 
 /**
+ * Records a super admin's approve/reject decision on a doctor's Basic Info
+ * section - independent of the per-document review in
+ * {@link updateDoctorDocumentsInSupabase}.
+ */
+export async function updateDoctorBasicInfoReviewInSupabase(
+  id: string,
+  decision: Exclude<DocumentReviewStatus, "pending">,
+  reason: string | undefined,
+  client?: TypedSupabaseClient
+): Promise<{ data: unknown; error: string | null }> {
+  if (!isSupabaseConfigured) return { data: null, error: null };
+  if (!isUuid(id)) {
+    if (process.env.NODE_ENV !== "production")
+      reportSupabase("updateDoctorBasicInfoReviewInSupabase: skipped non-uuid id", id);
+    return { data: null, error: null };
+  }
+  client ??= createClient();
+  try {
+    const { data, error } = await client
+      .from("doctors")
+      .update({
+        basic_info_status: decision,
+        basic_info_reviewed_at: new Date().toISOString(),
+        basic_info_rejection_reason: decision === "rejected" ? reason : null,
+      })
+      .eq("id", id)
+      .select()
+      .single();
+    if (error) {
+      reportSupabase(`updateDoctorBasicInfoReviewInSupabase(${id})`, error);
+      return { data: null, error: describeSupabaseError(error) };
+    }
+    return { data, error: null };
+  } catch (err) {
+    reportSupabase(`updateDoctorBasicInfoReviewInSupabase(${id})`, err);
+    return { data: null, error: describeSupabaseError(err) };
+  }
+}
+
+/**
  * Updates the doctor account's overall registration status (`profiles.verification_status`).
  * This is what actually moves the doctor off the "waiting for approval" screen after a super
  * admin reviews their documents - the per-document checklist above only tracks which individual
@@ -114,7 +161,7 @@ export async function updateDoctorVerificationInSupabase(
 export async function updateDoctorRegistrationStatusInSupabase(
   profileId: string | undefined,
   status: "Approved" | "Rejected" | "Needs Changes",
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(profileId)) {
@@ -146,7 +193,7 @@ export async function updateDoctorProfileInSupabase(
   patch: Partial<
     Pick<Doctor, "specialty" | "subSpecialty" | "licenseNumber" | "licenseExpiry" | "yearsOfExperience" | "preferredLocations">
   >,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -154,7 +201,7 @@ export async function updateDoctorProfileInSupabase(
       reportSupabase("updateDoctorProfileInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"doctors"> = {};
   if (patch.specialty !== undefined) update.specialty = patch.specialty;
   if (patch.subSpecialty !== undefined) update.sub_specialty = patch.subSpecialty;
   if (patch.licenseNumber !== undefined) update.license_number = patch.licenseNumber;
@@ -189,7 +236,7 @@ export async function updateDoctorProfileInSupabase(
 export async function updateDoctorDocumentsInSupabase(
   id: string,
   uploadedDocuments: Record<string, UploadedFileMetadata>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {

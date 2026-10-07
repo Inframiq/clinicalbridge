@@ -21,6 +21,7 @@ import {
   RefreshCw,
   Store,
   Bell,
+  ScrollText,
 } from "lucide-react";
 
 export interface NavItem {
@@ -43,6 +44,7 @@ export const hospitalNavItems: NavItem[] = [
   { label: "Payments & Wallet", href: "/hospital/payments-wallet", icon: Wallet },
   { label: "Ratings", href: "/hospital/ratings", icon: Star },
   { label: "Analytics", href: "/hospital/analytics", icon: BarChart3 },
+  { label: "Messages", href: "/hospital/messages", icon: MessageSquare },
   { label: "Settings", href: "/hospital/settings", icon: Settings },
 ];
 
@@ -50,6 +52,7 @@ export const workingDoctorNavItems: NavItem[] = [
   { label: "Dashboard", href: "/working-doctor/dashboard", icon: LayoutDashboard },
   { label: "My Schedule", href: "/working-doctor/schedule", icon: CalendarDays },
   { label: "Replacement Requests", href: "/working-doctor/replacement-requests", icon: RefreshCw },
+  { label: "Messages", href: "/working-doctor/messages", icon: MessageSquare },
   { label: "Settings", href: "/working-doctor/settings", icon: Settings },
 ];
 
@@ -76,6 +79,7 @@ export const superAdminNavItems: NavItem[] = [
   { label: "Hospital Verification", href: "/super-admin/hospitals", icon: Building2 },
   { label: "Doctor Verification", href: "/super-admin/doctors", icon: Users },
   { label: "Analytics", href: "/super-admin/analytics", icon: BarChart3 },
+  { label: "Audit Log", href: "/super-admin/audit-log", icon: ScrollText },
   { label: "Settings", href: "/super-admin/settings", icon: Settings },
 ];
 

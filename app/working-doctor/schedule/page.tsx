@@ -11,7 +11,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { RequestReplacementDialog } from "@/components/forms/request-replacement-dialog";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentWorkingDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { shiftStatusMeta } from "@/lib/status";
 
 function toDateKey(date: Date) {
@@ -20,9 +21,12 @@ function toDateKey(date: Date) {
 
 export default function WorkingDoctorSchedulePage() {
   const { shifts: allShifts, confirmShiftAttendance } = useShifts();
+  const { doctors } = useDoctors();
+  const { profile } = useAuthRole();
+  const myDoctor = doctors.find((d) => d.profileId === profile?.id);
   const myShifts = useMemo(
-    () => allShifts.filter((s) => s.assignedDoctorId === currentWorkingDoctor.id),
-    [allShifts]
+    () => allShifts.filter((s) => s.assignedDoctorId === myDoctor?.id),
+    [allShifts, myDoctor?.id]
   );
   const scheduledDates = useMemo(() => myShifts.map((s) => new Date(s.date)), [myShifts]);
   const [selected, setSelected] = useState<Date | undefined>(new Date("2025-05-25"));
@@ -101,7 +105,7 @@ export default function WorkingDoctorSchedulePage() {
                         )}
                         <RequestReplacementDialog
                           shift={shift}
-                          requestingDoctorId={currentWorkingDoctor.id}
+                          requestingDoctorId={myDoctor!.id}
                           trigger={
                             <Button size="sm" variant="outline">
                               <RefreshCw className="size-4" /> Request Replacement

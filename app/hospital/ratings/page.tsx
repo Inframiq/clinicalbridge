@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { Person } from "@/components/dashboard/person";
 import { DataTable } from "@/components/data-table/data-table";
-import { doctors } from "@/lib/mock-data/doctors";
+import { EmptyState } from "@/components/dashboard/empty-state";
+import { useDoctors } from "@/hooks/use-doctors";
 import type { Doctor } from "@/types";
 
 function StarRating({ value }: { value: number }) {
@@ -24,7 +25,12 @@ function StarRating({ value }: { value: number }) {
 }
 
 export default function RatingsPage() {
-  const avgRating = doctors.reduce((sum, d) => sum + d.rating, 0) / doctors.length;
+  const { doctors } = useDoctors();
+  const ratedDoctors = doctors.filter((d) => d.reviewCount > 0);
+  const avgRating =
+    ratedDoctors.length === 0
+      ? 0
+      : ratedDoctors.reduce((sum, d) => sum + d.rating, 0) / ratedDoctors.length;
   const totalReviews = doctors.reduce((sum, d) => sum + d.reviewCount, 0);
 
   const columns: ColumnDef<Doctor>[] = useMemo(
@@ -62,7 +68,11 @@ export default function RatingsPage() {
         <StatCard label="Total Reviews" value={String(totalReviews)} icon={Star} iconTone="warning" />
       </div>
       <div className="mt-6">
-        <DataTable columns={columns} data={doctors} searchPlaceholder="Search doctors..." />
+        {doctors.length === 0 ? (
+          <EmptyState icon={Star} title="No doctors yet" description="Ratings will appear once doctors join your roster." />
+        ) : (
+          <DataTable columns={columns} data={doctors} searchPlaceholder="Search doctors..." />
+        )}
       </div>
     </div>
   );

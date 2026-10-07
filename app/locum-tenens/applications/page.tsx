@@ -13,17 +13,21 @@ import { Button } from "@/components/ui/button";
 import { ShiftDetailsSheet } from "@/components/dashboard/shift-details-sheet";
 import { useApplications } from "@/hooks/use-applications";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatDate } from "@/lib/format";
 import { applicationStatusMeta } from "@/lib/status";
 import type { Application } from "@/types";
 
 export default function DoctorApplicationsPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { applications: all, withdrawApplication } = useApplications();
   const { shifts } = useShifts();
   const applications = useMemo(
-    () => all.filter((a) => a.doctorId === currentDoctor.id),
-    [all]
+    () => all.filter((a) => a.doctorId === myDoctorId),
+    [all, myDoctorId]
   );
 
   const accepted = applications.filter((a) => a.status === "accepted").length;
@@ -75,7 +79,7 @@ export default function DoctorApplicationsPage() {
             {shift && (
               <ShiftDetailsSheet
                 shift={shift}
-                currentDoctorId={currentDoctor.id}
+                currentDoctorId={myDoctorId ?? ""}
                 trigger={
                   <Button size="sm" variant="ghost">
                     <Eye className="size-4" />

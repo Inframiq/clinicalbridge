@@ -10,16 +10,20 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { DataTable } from "@/components/data-table/data-table";
 import { Button } from "@/components/ui/button";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { shiftStatusMeta } from "@/lib/status";
 import type { Shift } from "@/types";
 
 export default function MyShiftsPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
   const { shifts: allShifts, respondToShiftAssignment } = useShifts();
   const shifts = useMemo(
-    () => allShifts.filter((s) => s.assignedDoctorId === currentDoctor.id),
-    [allShifts]
+    () => allShifts.filter((s) => s.assignedDoctorId === myDoctorId),
+    [allShifts, myDoctorId]
   );
 
   const active = shifts.filter((s) => s.status === "active").length;

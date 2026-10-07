@@ -2,10 +2,11 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
+import { Users, CheckCircle2, Clock3, ShieldAlert, ShieldX, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
+import { licenseExpiryStatus } from "@/lib/license-expiry";
 import { Person } from "@/components/dashboard/person";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table/data-table";
@@ -24,7 +25,11 @@ export default function SuperAdminDoctorsPage() {
 
   const totalActive = doctors.filter((d) => d.status === "active").length;
   const totalOnboarding = doctors.filter((d) => d.status === "onboarding").length;
-  const pendingVerification = doctors.filter((d) => !d.verified).length;
+  // A rejected doctor never flips `verified` to true — exclude it explicitly
+  // so a closed application doesn't inflate the pending count.
+  const pendingVerification = doctors.filter(
+    (d) => !d.verified && d.registrationStatus !== "Rejected"
+  ).length;
 
   const columns: ColumnDef<Doctor>[] = useMemo(
     () => [
@@ -59,6 +64,30 @@ export default function SuperAdminDoctorsPage() {
       {
         accessorKey: "licenseNumber",
         header: "Registration No.",
+        cell: ({ row }) => {
+          const { state, daysLeft } = licenseExpiryStatus(row.original.licenseExpiry);
+          return (
+            <div>
+              <p>{row.original.licenseNumber || "—"}</p>
+              {state === "expired" && <StatusBadge label="Licence expired" tone="danger" />}
+              {state === "expiring" && <StatusBadge label={`Expires in ${daysLeft}d`} tone="warning" />}
+            </div>
+          );
+        },
+      },
+      {
+        id: "profile",
+        header: "Profile",
+        cell: ({ row }) => (
+          <VerifyDoctorDialog
+            doctor={row.original}
+            trigger={
+              <Button variant="ghost" size="sm">
+                <UserRound className="size-3.5" /> View Profile
+              </Button>
+            }
+          />
+        ),
       },
       {
         id: "verification",
@@ -80,7 +109,7 @@ export default function SuperAdminDoctorsPage() {
                   ) : total > 0 && approved === total ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
-                    <ShieldAlert className="size-3.5 text-warning-foreground" />
+                    <ShieldAlert className="size-3.5 text-warning" />
                   )}
                   {approved}/{total} docs
                 </Button>

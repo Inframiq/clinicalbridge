@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/dashboard/empty-state";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { joinPostShiftRecords } from "@/lib/selectors";
 import { formatDate } from "@/lib/format";
 
@@ -24,12 +25,18 @@ const credentialingDocs = [
 ];
 
 export default function DoctorDocumentsPage() {
-  const [uploaded, setUploaded] = useState<Record<string, boolean>>(
-    Object.fromEntries(credentialingDocs.map((d) => [d.key, true]))
-  );
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id;
+  // No backend tracks these specific credentialing document types yet (this
+  // is separate from the medicalCouncil/degree/identity/hospitalApproval
+  // verification checklist collected during onboarding) - upload state is
+  // session-local until that's built, so it starts as "not uploaded" rather
+  // than fabricating that every document is already on file.
+  const [uploaded, setUploaded] = useState<Record<string, boolean>>({});
   const { payments } = usePayments();
   const { shifts } = useShifts();
-  const joined = joinPostShiftRecords(payments.filter((p) => p.doctorId === currentDoctor.id), shifts);
+  const joined = joinPostShiftRecords(payments.filter((p) => p.doctorId === myDoctorId), shifts);
 
   return (
     <div>

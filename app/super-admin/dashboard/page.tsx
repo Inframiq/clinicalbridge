@@ -16,8 +16,15 @@ export default function SuperAdminDashboardPage() {
   const { doctors } = useDoctors();
   const { facilities } = useFacilities();
 
-  const pendingHospitals = facilities.filter((f) => f.status !== "verified");
-  const pendingDoctors = doctors.filter((d) => d.status === "onboarding" || !d.verified);
+  // A rejected application is a closed case, not a pending one — without this
+  // check it would sit in the queue forever since rejecting only sets
+  // registrationStatus, it never flips status/verified to a "resolved" value.
+  const pendingHospitals = facilities.filter(
+    (f) => f.status !== "verified" && f.registrationStatus !== "Rejected"
+  );
+  const pendingDoctors = doctors.filter(
+    (d) => (d.status === "onboarding" || !d.verified) && d.registrationStatus !== "Rejected"
+  );
 
   return (
     <div>

@@ -13,6 +13,7 @@ import {
   ChevronRight,
   FileText,
   ShieldCheck,
+  ShieldX,
   Upload,
   Loader2,
 } from "lucide-react";
@@ -34,13 +35,22 @@ import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { Person } from "@/components/dashboard/person";
 import { useAuthRole } from "@/context/auth-provider";
 import { useDoctors } from "@/hooks/use-doctors";
-import { useAutosave } from "@/hooks/use-autosave";
 import { useHasMounted } from "@/hooks/use-has-mounted";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
 import { isoDateYearsAgo, isoDateYearsFromNow, todayIsoDate } from "@/lib/utils";
-import { SPECIALTIES } from "@/lib/specialties";
+import { MEDICAL_SPECIALTIES } from "@/lib/config/specialties";
+import {
+  nameField,
+  emailField,
+  phoneField,
+  npiField,
+  licenseNumberField,
+  shortTextField,
+  routingNumberField,
+  bankAccountNumberField,
+} from "@/lib/validation";
 import type { Doctor } from "@/types";
 
 const MIN_DOB = isoDateYearsAgo(120);
@@ -55,23 +65,23 @@ function isYearInRange(value: string, min: string, max: string) {
 }
 
 const schema = z.object({
-  firstName: z.string().min(1, "Required"),
-  lastName: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(7, "Required"),
+  firstName: nameField(60),
+  lastName: nameField(60),
+  email: emailField,
+  phone: phoneField,
   dob: z
     .string()
     .min(1, "Required")
     .refine((v) => isYearInRange(v, MIN_DOB, MAX_DOB), "Enter a valid date of birth"),
   gender: z.string().min(1, "Required"),
-  npiNumber: z.string().min(5, "Required"),
+  npiNumber: npiField,
   primarySpecialty: z.string().min(1, "Required"),
-  subSpecialty: z.string().optional(),
+  subSpecialty: z.string().max(80, "Must be 80 characters or fewer").optional(),
   yearsOfExperience: z.string().min(1, "Required"),
   employmentType: z.string().min(1, "Required"),
-  preferredLocations: z.string().min(1, "Add at least one location"),
+  preferredLocations: shortTextField(300, "Add at least one location"),
 
-  licenseNumber: z.string().min(1, "Required"),
+  licenseNumber: licenseNumberField(40),
   licenseState: z.string().min(1, "Required"),
   licenseExpiry: z
     .string()
@@ -82,10 +92,10 @@ const schema = z.object({
 
   backgroundCheckConsent: z.boolean().refine((v) => v, "Consent is required to continue"),
 
-  bankAccountHolder: z.string().min(1, "Required"),
-  bankName: z.string().min(1, "Required"),
-  accountNumber: z.string().min(4, "Required"),
-  routingNumber: z.string().min(4, "Required"),
+  bankAccountHolder: shortTextField(100),
+  bankName: shortTextField(100),
+  accountNumber: bankAccountNumberField,
+  routingNumber: routingNumberField,
 
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
@@ -122,6 +132,16 @@ const documentChecklist = [
   { key: "cvResume", label: "CV / Resume" },
 ];
 
+// A document that was rejected in a previous review round still has a file
+// object (so the checklist "uploaded" check alone can't catch it) — it must
+// be replaced before the application counts as ready to resubmit.
+function allDocumentsResolved(files: Record<string, UploadedFileMetadata>) {
+  return (
+    Object.keys(files).length === documentChecklist.length &&
+    Object.values(files).every((f) => f.status !== "rejected")
+  );
+}
+
 const certificationOptions = [
   { key: "acls", label: "ACLS — Advanced Cardiac Life Support" },
   { key: "bls", label: "BLS — Basic Life Support" },
@@ -156,7 +176,7 @@ const initialDefaults: FormValues = {
 
 export function OnboardingWizard() {
   const router = useRouter();
-  const { login, refreshProfile, profile } = useAuthRole();
+  const { refreshProfile, profile } = useAuthRole();
   const { doctors, registerSelfDoctor } = useDoctors();
   // Date-input bounds below come from module-level `todayIsoDate()` /
   // `isoDateYears*()` consts, which are evaluated once at module load and so can
@@ -174,18 +194,19 @@ export function OnboardingWizard() {
     bls: true,
   });
 
-  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
-    "locum_tenens_onboarding",
-    initialDefaults
-  );
-
+  // Deliberately NOT persisted anywhere client-side (no localStorage, no
+  // autosave draft): this form collects bank account/routing numbers and
+  // other sensitive PII, and a fixed or reused browser-storage key was
+  // previously leaking one applicant's in-progress answers into the next
+  // person's onboarding form on the same browser. Form state now lives only
+  // in react-hook-form's in-memory state and is gone the moment this
+  // component unmounts (refresh, navigation away, or logout).
   const {
     register,
     control,
     trigger,
     watch,
     setValue,
-    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -194,42 +215,27 @@ export function OnboardingWizard() {
 
   const values = watch();
 
-  // Save changes to local storage draft
+  // Resuming after "Needs Changes" re-fetches already-uploaded documents from
+  // Supabase (server-side, scoped to this account by `profile.id`) so the
+  // applicant doesn't have to re-upload every document (including ones a
+  // super admin already approved) just to fix the one that was rejected.
+  // This is account data pulled from the database, not a client-side cache.
   useEffect(() => {
-    const subscription = watch((value) => {
-      saveDraft(value as Partial<FormValues>);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, saveDraft]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      reset(autosavedData);
-    }
-  }, [isHydrated, autosavedData, reset]);
-
-  // Resuming after "Needs Changes" clears the local autosave draft the moment
-  // the original application was submitted, so without this the applicant
-  // would have to re-upload every document (including ones a super admin
-  // already approved) just to fix the one that was rejected.
-  useEffect(() => {
-    if (!isHydrated || !profile?.id) return;
+    if (!profile?.id) return;
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = doctors.find((d) => d.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
       setUploadedFiles(existing.uploadedDocuments);
-      setValue(
-        "documentsComplete",
-        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
-        { shouldValidate: false }
-      );
+      setValue("documentsComplete", allDocumentsResolved(existing.uploadedDocuments), {
+        shouldValidate: false,
+      });
     }
-    // Only ever re-run this off `profile.id` becoming available / hydration
-    // finishing — `doctors` and `uploadedFiles` change as a *result* of this
-    // effect (or of uploads), so including them would fight the "only prefill
-    // once, when empty" guard above.
+    // Only ever re-run this off `profile.id` becoming available —
+    // `doctors` and `uploadedFiles` change as a *result* of this effect (or
+    // of uploads), so including them would fight the "only prefill once,
+    // when empty" guard above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, profile?.id]);
+  }, [profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -247,9 +253,7 @@ export function OnboardingWizard() {
 
     setUploadedFiles((prev) => {
       const next = { ...prev, [key]: metadata };
-      setValue("documentsComplete", Object.keys(next).length === documentChecklist.length, {
-        shouldValidate: false,
-      });
+      setValue("documentsComplete", allDocumentsResolved(next), { shouldValidate: false });
       return next;
     });
     toast.success(`${file.name} uploaded successfully!`);
@@ -295,7 +299,7 @@ export function OnboardingWizard() {
           const formattedExpiry = values.licenseExpiry ? values.licenseExpiry : null;
 
           const doctorFields = {
-            doctor_kind: "locum_tenens",
+            doctor_kind: "locum_tenens" as const,
             first_name: values.firstName,
             last_name: values.lastName,
             specialty: values.primarySpecialty,
@@ -369,8 +373,6 @@ export function OnboardingWizard() {
           return;
         }
 
-        clearDraft();
-        login("locum_tenens");
         toast.success("Application submitted! Your profile is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -403,14 +405,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.firstName}>
                       <FieldLabel htmlFor="firstName">First Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="firstName" {...register("firstName")} />
+                        <Input id="firstName" maxLength={60} {...register("firstName")} />
                         <FieldError errors={[errors.firstName]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.lastName}>
                       <FieldLabel htmlFor="lastName">Last Name *</FieldLabel>
                       <FieldContent>
-                        <Input id="lastName" {...register("lastName")} />
+                        <Input id="lastName" maxLength={60} {...register("lastName")} />
                         <FieldError errors={[errors.lastName]} />
                       </FieldContent>
                     </Field>
@@ -419,14 +421,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.email}>
                       <FieldLabel htmlFor="email">Email Address *</FieldLabel>
                       <FieldContent>
-                        <Input id="email" type="email" {...register("email")} />
+                        <Input id="email" type="email" maxLength={254} {...register("email")} />
                         <FieldError errors={[errors.email]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.phone}>
                       <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="phone" {...register("phone")} />
+                        <Input id="phone" type="tel" maxLength={20} {...register("phone")} />
                         <FieldError errors={[errors.phone]} />
                       </FieldContent>
                     </Field>
@@ -470,7 +472,7 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.npiNumber}>
                       <FieldLabel htmlFor="npiNumber">NPI Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="npiNumber" {...register("npiNumber")} />
+                        <Input id="npiNumber" maxLength={10} {...register("npiNumber")} />
                         <FieldError errors={[errors.npiNumber]} />
                       </FieldContent>
                     </Field>
@@ -488,7 +490,7 @@ export function OnboardingWizard() {
                                 <SelectValue placeholder="Select specialty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {SPECIALTIES.map((s) => (
+                                {MEDICAL_SPECIALTIES.map((s) => (
                                   <SelectItem key={s} value={s}>
                                     {s}
                                   </SelectItem>
@@ -503,7 +505,7 @@ export function OnboardingWizard() {
                     <Field>
                       <FieldLabel htmlFor="subSpecialty">Sub-specialty (Optional)</FieldLabel>
                       <FieldContent>
-                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" {...register("subSpecialty")} />
+                        <Input id="subSpecialty" placeholder="e.g. Trauma Care" maxLength={80} {...register("subSpecialty")} />
                       </FieldContent>
                     </Field>
                   </div>
@@ -561,6 +563,7 @@ export function OnboardingWizard() {
                       <Input
                         id="preferredLocations"
                         placeholder="New York, NY; Boston, MA"
+                        maxLength={300}
                         {...register("preferredLocations")}
                       />
                       <FieldError errors={[errors.preferredLocations]} />
@@ -575,14 +578,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.licenseNumber}>
                       <FieldLabel htmlFor="licenseNumber">Medical License Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseNumber" {...register("licenseNumber")} />
+                        <Input id="licenseNumber" maxLength={40} {...register("licenseNumber")} />
                         <FieldError errors={[errors.licenseNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.licenseState}>
                       <FieldLabel htmlFor="licenseState">Issuing State *</FieldLabel>
                       <FieldContent>
-                        <Input id="licenseState" placeholder="e.g. NY" {...register("licenseState")} />
+                        <Input id="licenseState" placeholder="e.g. NY" maxLength={40} {...register("licenseState")} />
                         <FieldError errors={[errors.licenseState]} />
                       </FieldContent>
                     </Field>
@@ -631,46 +634,74 @@ export function OnboardingWizard() {
                     Upload the required documents to Supabase Storage (PDF, JPG, PNG — max 10MB).
                   </p>
                   {documentChecklist.map((doc) => {
-                    const isUploaded = !!uploadedFiles[doc.key];
+                    const uploaded = uploadedFiles[doc.key];
+                    const isRejected = uploaded?.status === "rejected";
                     const isUploading = uploadingKey === doc.key;
+                    const pickerInput = (
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileUpload(doc.key, file);
+                        }}
+                      />
+                    );
                     return (
-                      <div
-                        key={doc.key}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
-                      >
-                        <span className="flex shrink-0 items-center gap-2 text-sm">
-                          <FileText className="size-4 shrink-0 text-muted-foreground" /> {doc.label}
-                        </span>
-                        {isUploaded ? (
-                          <span
-                            title={uploadedFiles[doc.key].name}
-                            className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs font-medium text-success"
-                          >
-                            <CheckCircle2 className="size-3.5 shrink-0" />
-                            <span className="truncate">{uploadedFiles[doc.key].name}</span>
+                      <div key={doc.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex shrink-0 items-center gap-2 text-sm">
+                            <FileText className="size-4 shrink-0 text-muted-foreground" /> {doc.label}
                           </span>
-                        ) : (
-                          <label className="shrink-0 cursor-pointer">
-                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
-                              <span>
-                                {isUploading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="size-3.5" />
-                                )}
-                                Upload
+                          {isRejected ? (
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-destructive">
+                                <ShieldX className="size-3.5 shrink-0" /> Rejected — re-upload
                               </span>
-                            </Button>
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleFileUpload(doc.key, file);
-                              }}
-                            />
-                          </label>
+                              <label className="shrink-0 cursor-pointer">
+                                <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                  <span>
+                                    {isUploading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Upload className="size-3.5" />
+                                    )}
+                                    Replace
+                                  </span>
+                                </Button>
+                                {pickerInput}
+                              </label>
+                            </div>
+                          ) : uploaded ? (
+                            <span
+                              title={uploaded.name}
+                              className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs font-medium text-success"
+                            >
+                              <CheckCircle2 className="size-3.5 shrink-0" />
+                              <span className="truncate">{uploaded.name}</span>
+                            </span>
+                          ) : (
+                            <label className="shrink-0 cursor-pointer">
+                              <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                <span>
+                                  {isUploading ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <Upload className="size-3.5" />
+                                  )}
+                                  Upload
+                                </span>
+                              </Button>
+                              {pickerInput}
+                            </label>
+                          )}
+                        </div>
+                        {isRejected && uploaded?.rejectionReason && (
+                          <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                            <span className="font-medium">Reason: </span>
+                            {uploaded.rejectionReason}
+                          </p>
                         )}
                       </div>
                     );
@@ -710,14 +741,14 @@ export function OnboardingWizard() {
                   <Field data-invalid={!!errors.bankAccountHolder}>
                     <FieldLabel htmlFor="bankAccountHolder">Account Holder Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="bankAccountHolder" {...register("bankAccountHolder")} />
+                      <Input id="bankAccountHolder" maxLength={100} {...register("bankAccountHolder")} />
                       <FieldError errors={[errors.bankAccountHolder]} />
                     </FieldContent>
                   </Field>
                   <Field data-invalid={!!errors.bankName}>
                     <FieldLabel htmlFor="bankName">Bank Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="bankName" {...register("bankName")} />
+                      <Input id="bankName" maxLength={100} {...register("bankName")} />
                       <FieldError errors={[errors.bankName]} />
                     </FieldContent>
                   </Field>
@@ -725,14 +756,14 @@ export function OnboardingWizard() {
                     <Field data-invalid={!!errors.accountNumber}>
                       <FieldLabel htmlFor="accountNumber">Account Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="accountNumber" {...register("accountNumber")} />
+                        <Input id="accountNumber" inputMode="numeric" maxLength={17} {...register("accountNumber")} />
                         <FieldError errors={[errors.accountNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.routingNumber}>
                       <FieldLabel htmlFor="routingNumber">Routing Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="routingNumber" {...register("routingNumber")} />
+                        <Input id="routingNumber" inputMode="numeric" maxLength={9} {...register("routingNumber")} />
                         <FieldError errors={[errors.routingNumber]} />
                       </FieldContent>
                     </Field>
@@ -823,18 +854,24 @@ export function OnboardingWizard() {
             <CardContent>
               <p className="mb-3 text-sm font-medium text-foreground">Document Checklist</p>
               <ul className="space-y-2">
-                {documentChecklist.map((doc) => (
-                  <li key={doc.key} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate text-muted-foreground" title={doc.label}>
-                      {doc.label}
-                    </span>
-                    {uploadedFiles[doc.key] ? (
-                      <span className="shrink-0 text-xs font-medium text-success">Uploaded</span>
-                    ) : (
-                      <span className="shrink-0 text-xs font-medium text-destructive">Not uploaded</span>
-                    )}
-                  </li>
-                ))}
+                {documentChecklist.map((doc) => {
+                  const uploaded = uploadedFiles[doc.key];
+                  const isRejected = uploaded?.status === "rejected";
+                  return (
+                    <li key={doc.key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-muted-foreground" title={doc.label}>
+                        {doc.label}
+                      </span>
+                      {isRejected ? (
+                        <span className="shrink-0 text-xs font-medium text-destructive">Rejected</span>
+                      ) : uploaded ? (
+                        <span className="shrink-0 text-xs font-medium text-success">Uploaded</span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-medium text-destructive">Not uploaded</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

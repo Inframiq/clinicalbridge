@@ -13,7 +13,6 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
 
 export default function DepartmentsPage() {
   const { doctors } = useDoctors();
@@ -22,9 +21,7 @@ export default function DepartmentsPage() {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const [newName, setNewName] = useState("");
@@ -53,9 +50,15 @@ export default function DepartmentsPage() {
     };
   });
 
+  const MAX_DEPARTMENT_NAME = 60;
+
   async function handleCreate() {
     const name = newName.trim();
     if (!name || !myFacility) return;
+    if (name.length > MAX_DEPARTMENT_NAME) {
+      toast.error(`Department name must be ${MAX_DEPARTMENT_NAME} characters or fewer`);
+      return;
+    }
     setIsCreating(true);
     try {
       await createDepartment({ facilityId: myFacility.id, name });
@@ -76,6 +79,10 @@ export default function DepartmentsPage() {
   async function saveEdit(id: string) {
     const name = editingName.trim();
     if (!name) return;
+    if (name.length > MAX_DEPARTMENT_NAME) {
+      toast.error(`Department name must be ${MAX_DEPARTMENT_NAME} characters or fewer`);
+      return;
+    }
     await renameDepartment(id, name);
     setEditingId(null);
   }
@@ -98,6 +105,7 @@ export default function DepartmentsPage() {
           value={newName}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+          maxLength={MAX_DEPARTMENT_NAME}
           className="max-w-xs"
         />
         <Button type="button" onClick={handleCreate} disabled={isCreating || !newName.trim()}>
@@ -126,6 +134,7 @@ export default function DepartmentsPage() {
                         value={editingName}
                         onChange={(e) => setEditingName(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && saveEdit(stat.department.id)}
+                        maxLength={MAX_DEPARTMENT_NAME}
                         className="h-8"
                         autoFocus
                       />
@@ -183,7 +192,7 @@ export default function DepartmentsPage() {
                     <span className="truncate text-muted-foreground">On Leave</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <DoorOpen className="size-4 shrink-0 text-warning-foreground" />
+                    <DoorOpen className="size-4 shrink-0 text-warning" />
                     <span className="font-medium text-foreground">{stat.vacant}</span>
                     <span className="truncate text-muted-foreground">Vacant</span>
                   </div>

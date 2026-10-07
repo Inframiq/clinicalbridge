@@ -1,13 +1,13 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { PostShiftRecord } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapPayoutRow } from "../mappers";
 
 export async function getPayouts(
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: PostShiftRecord[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   client ??= createClient();
@@ -32,7 +32,7 @@ export async function getPayouts(
 export async function updatePayoutStatusInSupabase(
   id: string,
   patch: Partial<Pick<PostShiftRecord, "status" | "approvedAt" | "paidAt">>,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -40,7 +40,7 @@ export async function updatePayoutStatusInSupabase(
       reportSupabase("updatePayoutStatusInSupabase: skipped non-uuid id", id);
     return { data: null, error: null };
   }
-  const update: Record<string, unknown> = {};
+  const update: TablesUpdate<"payouts"> = {};
   if (patch.status !== undefined) update.status = patch.status;
   if (patch.approvedAt !== undefined) update.approved_at = patch.approvedAt;
   if (patch.paidAt !== undefined) update.paid_at = patch.paidAt;

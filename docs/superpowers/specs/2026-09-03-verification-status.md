@@ -1,5 +1,7 @@
 # Supabase-first data layer — verification status
 
+> **Historical (2026-09-03).** Offline/mock-data mode was removed after this was written, and the auth gate now fails closed when the Supabase env vars are missing. For the current deployment steps see `README.md` → "Deploying to production".
+
 **Branch:** `sdd/supabase-first-data-layer` · **Head:** `577b001` · **Date:** 2026-09-03
 **Plan:** `docs/superpowers/plans/2026-09-03-supabase-first-data-layer.md`
 

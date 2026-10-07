@@ -1,0 +1,56 @@
+name: DB migrate
+
+# Applies pending supabase/migrations to a Supabase project with
+# `supabase db push`. Manual on purpose: the database is production data.
+#
+# One-time setup (see README → "Database migrations from CI"):
+#   * repository secrets SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD and
+#     SUPABASE_PROJECT_REF (use GitHub environments to keep separate values for
+#     staging and production);
+#   * if earlier migrations were applied by hand in the SQL editor, mark them
+#     as applied first with `supabase migration repair`, or db push will try to
+#     re-run them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GitHub environment holding the Supabase secrets"
+        required: true
+        default: production
+        type: choice
+        options: [staging, production]
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # The same per-role RLS suite CI runs - never push migrations that fail it.
+      - run: npx vitest run tests/db
+
+      - name: Check secrets
+        run: |
+          for v in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!v}" ]; then echo "::error::$v is not set for this environment"; exit 1; fi
+          done
+
+      - run: npx supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Pending migrations
+        run: npx supabase migration list --password "$SUPABASE_DB_PASSWORD"
+
+      - run: npx supabase db push --password "$SUPABASE_DB_PASSWORD"

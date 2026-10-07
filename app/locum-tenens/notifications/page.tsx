@@ -12,7 +12,7 @@ import type { AppNotification } from "@/types";
 const typeMeta: Record<AppNotification["type"], { icon: typeof Info; className: string }> = {
   info: { icon: Info, className: "bg-info-muted text-info" },
   success: { icon: CheckCircle2, className: "bg-success-muted text-success" },
-  warning: { icon: TriangleAlert, className: "bg-warning-muted text-warning-foreground" },
+  warning: { icon: TriangleAlert, className: "bg-warning-muted text-warning" },
   danger: { icon: XCircle, className: "bg-danger-muted text-destructive" },
 };
 

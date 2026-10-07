@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { RateHospitalDialog } from "@/components/forms/rate-hospital-dialog";
 import { useRatings } from "@/hooks/use-ratings";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatDate } from "@/lib/format";
 
 function StarRow({ value }: { value: number }) {
@@ -23,22 +24,25 @@ function StarRow({ value }: { value: number }) {
 }
 
 export default function LocumRatingsPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctorId = doctors.find((d) => d.profileId === profile?.id)?.id ?? "";
   const { ratings } = useRatings();
   const { shifts } = useShifts();
 
   const received = ratings.filter(
-    (r) => r.direction === "hospital_to_doctor" && r.doctorId === currentDoctor.id
+    (r) => r.direction === "hospital_to_doctor" && r.doctorId === myDoctorId
   );
   const avgScore = received.length
     ? received.reduce((sum, r) => sum + r.overallScore, 0) / received.length
     : 0;
 
   const myCompletedShifts = shifts.filter(
-    (s) => s.assignedDoctorId === currentDoctor.id && s.status === "completed"
+    (s) => s.assignedDoctorId === myDoctorId && s.status === "completed"
   );
   const ratedShiftIds = new Set(
     ratings
-      .filter((r) => r.direction === "doctor_to_hospital" && r.doctorId === currentDoctor.id)
+      .filter((r) => r.direction === "doctor_to_hospital" && r.doctorId === myDoctorId)
       .map((r) => r.shiftId)
   );
   const shiftsToRate = myCompletedShifts.filter((s) => !ratedShiftIds.has(s.id));
@@ -96,7 +100,7 @@ export default function LocumRatingsPage() {
                   </div>
                   <RateHospitalDialog
                     shift={shift}
-                    doctorId={currentDoctor.id}
+                    doctorId={myDoctorId}
                     trigger={<Button size="sm" variant="outline">Rate</Button>}
                   />
                 </li>

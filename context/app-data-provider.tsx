@@ -17,17 +17,7 @@ import type {
   Department,
   AttendanceRecord,
 } from "@/types";
-import {
-  shifts as seedShifts,
-  applications as seedApplications,
-  postShiftRecords as seedPayments,
-  notifications as seedNotifications,
-  doctors as seedDoctors,
-  replacementRequests as seedReplacementRequests,
-  ratings as seedRatings,
-} from "@/lib/mock-data";
-import { facilities as seedFacilities, type Facility } from "@/lib/mock-data/organizations";
-import { DEPARTMENTS as seedDepartmentNames } from "@/lib/mock-data/departments";
+import type { Facility } from "@/lib/supabase/services/facilities";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
 import { useAuthRole } from "@/context/auth-provider";
 import {
@@ -45,7 +35,7 @@ import {
   mapReplacementRequestRow,
   mapApplicationRow,
 } from "@/lib/supabase/services/shifts";
-import { mapShiftRow, mapRatingRow } from "@/lib/supabase/mappers";
+import { mapShiftRow, mapRatingRow, mapPayoutRow, mapNotificationRow } from "@/lib/supabase/mappers";
 import {
   getDoctors,
   mapDoctorRow,
@@ -53,35 +43,70 @@ import {
   updateDoctorProfileInSupabase,
   updateDoctorRegistrationStatusInSupabase,
   updateDoctorDocumentsInSupabase,
+  updateDoctorBasicInfoReviewInSupabase,
 } from "@/lib/supabase/services/doctors";
 import {
   getFacilities,
   mapFacilityRow,
+  updateFacilityProfileInSupabase,
   updateFacilityVerificationInSupabase,
   updateFacilityRegistrationStatusInSupabase,
   updateFacilityDocumentsInSupabase,
+  updateFacilityBasicInfoReviewInSupabase,
 } from "@/lib/supabase/services/facilities";
 import type { UploadedFileMetadata, DocumentReviewStatus } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getPayouts, updatePayoutStatusInSupabase } from "@/lib/supabase/services/payouts";
 import { getRatings, createRatingInSupabase } from "@/lib/supabase/services/ratings";
-import { getNotifications, markNotificationReadInSupabase } from "@/lib/supabase/services/notifications";
+import {
+  getNotifications,
+  markNotificationReadInSupabase,
+  createNotificationInSupabase,
+} from "@/lib/supabase/services/notifications";
 import { createSavedShiftInSupabase, deleteSavedShiftInSupabase } from "@/lib/supabase/services/saved-shifts";
 import {
   getDepartments,
+  mapDepartmentRow,
   createDepartmentInSupabase,
   renameDepartmentInSupabase,
   deleteDepartmentInSupabase,
 } from "@/lib/supabase/services/departments";
 import {
   getAttendanceRecords,
+  mapAttendanceRow,
   checkInInSupabase,
   checkOutInSupabase,
   verifyAttendanceInSupabase,
 } from "@/lib/supabase/services/attendance";
 import { reportSupabase } from "@/lib/supabase/log";
-import { OfflineModeBanner } from "@/components/layout/offline-mode-banner";
+import type { Tables } from "@/lib/supabase/types";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+
+/**
+ * Applies one realtime postgres_changes event to a local state slice: upserts
+ * the mapped row on INSERT/UPDATE, removes it by id on DELETE. DELETE
+ * payloads only carry the primary key under the default replica identity, so
+ * `payload.old` is read for `id` only - never mapped as a full row.
+ */
+function applyRealtimeChange<T extends { id: string }, R extends { id: string }>(
+  setter: (updater: T[] | ((prev: T[]) => T[])) => void,
+  payload: RealtimePostgresChangesPayload<R>,
+  mapRow: (row: R) => T
+) {
+  if (payload.eventType === "DELETE") {
+    const oldId = payload.old?.id;
+    if (!oldId) return;
+    setter((prev) => prev.filter((item) => item.id !== oldId));
+    return;
+  }
+  const mapped = mapRow(payload.new);
+  setter((prev) =>
+    prev.some((item) => item.id === mapped.id)
+      ? prev.map((item) => (item.id === mapped.id ? mapped : item))
+      : [mapped, ...prev]
+  );
+}
 
 export type NewShiftInput = Pick<
   Shift,
@@ -155,9 +180,16 @@ interface AppDataContextValue {
   updateApplicationStatus: (id: string, status: Application["status"]) => Promise<void>;
   applyToShift: (shiftId: string, doctorId: string) => Promise<void>;
   withdrawApplication: (id: string) => Promise<void>;
-  approveAndProcessPayment: (id: string) => Promise<void>;
+  approvePayment: (id: string) => Promise<void>;
+  /** Doctor-initiated: moves an "approved" payout to "Payment Processed". Resolves false on failure. */
+  withdrawPayout: (id: string) => Promise<boolean>;
   requestPaymentChanges: (id: string) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
+  /** Sends a notification to another user (invite, report, etc). Resolves false (and toasts) on failure. */
+  createNotification: (
+    recipientProfileId: string,
+    notification: Pick<AppNotification, "title" | "body" | "type" | "topic">
+  ) => Promise<boolean>;
   registerDoctor: (input: NewDoctorInput) => Promise<Doctor>;
   registerSelfDoctor: (input: NewSelfDoctorInput, doctorKind: DoctorKind) => Promise<Doctor>;
   registerHospital: (input: NewHospitalInput) => Promise<Facility>;
@@ -170,10 +202,21 @@ interface AppDataContextValue {
   reviewDoctorDocument: (
     id: string,
     docKey: string,
-    decision: Exclude<DocumentReviewStatus, "pending">
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    /** Required when `decision` is "rejected": why the super admin rejected this document. */
+    reason?: string
   ) => Promise<void>;
   /** Records that a super admin opened this document in the full-screen viewer. No-op if already viewed. */
   markDoctorDocumentViewed: (id: string, docKey: string) => Promise<void>;
+  /**
+   * Records a super admin's approve/reject decision on a doctor's Basic Info
+   * section, independent of {@link reviewDoctorDocument}.
+   */
+  reviewDoctorBasicInfo: (
+    id: string,
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    reason?: string
+  ) => Promise<void>;
   updateDoctorProfile: (
     id: string,
     patch: Partial<
@@ -217,14 +260,26 @@ interface AppDataContextValue {
     id: string,
     patch: Partial<HospitalVerification>
   ) => Promise<void>;
+  updateFacilityProfile: (
+    id: string,
+    patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>
+  ) => Promise<void>;
   /** Hospital counterpart of {@link reviewDoctorDocument}. */
   reviewFacilityDocument: (
     id: string,
     docKey: string,
-    decision: Exclude<DocumentReviewStatus, "pending">
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    /** Required when `decision` is "rejected": why the super admin rejected this document. */
+    reason?: string
   ) => Promise<void>;
   /** Facility counterpart of {@link markDoctorDocumentViewed}. */
   markFacilityDocumentViewed: (id: string, docKey: string) => Promise<void>;
+  /** Facility counterpart of {@link reviewDoctorBasicInfo}. */
+  reviewFacilityBasicInfo: (
+    id: string,
+    decision: Exclude<DocumentReviewStatus, "pending">,
+    reason?: string
+  ) => Promise<void>;
   approveFacilityRegistration: (id: string) => Promise<void>;
   rejectFacilityRegistration: (id: string) => Promise<void>;
   approveDoctorRegistration: (id: string) => Promise<void>;
@@ -242,63 +297,25 @@ interface AppDataContextValue {
 const AppDataContext = React.createContext<AppDataContextValue | null>(null);
 
 /**
- * Fallback facility identity for offline/demo mode, where there's no real
- * signed-in hospital account to read a facility from. Exported so callers
- * (e.g. BroadcastShiftForm) can fall back to it when `useFacilities()` has no
- * row for the current profile yet — online, every real broadcast must carry
- * the caller's own facility identity instead of this constant.
+ * Every slice starts empty so the first paint shows no rows; the sync effect
+ * below fills them from Supabase. Defined at module scope so each `seed.*` is
+ * a stable reference: `useLocalStorageState`'s `setValue` depends on
+ * `initialValue`, and a fresh `[]` per render would churn the setter identity
+ * and re-fire the effects below every render.
  */
-export const CITY_MEDICAL = {
-  facilityName: "City Medical Center",
-  facilityId: "fac-city-medical",
-  location: {
-    address: "123 Health St",
-    city: "New York",
-    state: "NY",
-    lat: 40.7608,
-    lng: -73.9918,
-  },
+const seed = {
+  shifts: [] as Shift[],
+  applications: [] as Application[],
+  payments: [] as PostShiftRecord[],
+  notifications: [] as AppNotification[],
+  doctors: [] as Doctor[],
+  replacementRequests: [] as ReplacementRequest[],
+  savedShifts: [] as SavedShift[],
+  ratings: [] as Rating[],
+  facilities: [] as Facility[],
+  departments: [] as Department[],
+  attendanceRecords: [] as AttendanceRecord[],
 };
-
-/**
- * Env-aware initial values. In online mode every slice starts empty so the first
- * paint shows no mock rows — the sync effect fills them from Supabase. Offline
- * (no Supabase creds) the mock-data arrays seed the demo. Defined at module
- * scope so each `seed.*` is a stable reference: `useLocalStorageState`'s
- * `setValue` depends on `initialValue`, and a fresh `[]` per render would churn
- * the setter identity and re-fire the effects below every render.
- */
-const seed = isSupabaseConfigured
-  ? {
-      shifts: [] as Shift[],
-      applications: [] as Application[],
-      payments: [] as PostShiftRecord[],
-      notifications: [] as AppNotification[],
-      doctors: [] as Doctor[],
-      replacementRequests: [] as ReplacementRequest[],
-      savedShifts: [] as SavedShift[],
-      ratings: [] as Rating[],
-      facilities: [] as Facility[],
-      departments: [] as Department[],
-      attendanceRecords: [] as AttendanceRecord[],
-    }
-  : {
-      shifts: seedShifts,
-      applications: seedApplications,
-      payments: seedPayments,
-      notifications: seedNotifications,
-      doctors: seedDoctors,
-      replacementRequests: seedReplacementRequests,
-      savedShifts: [] as SavedShift[],
-      ratings: seedRatings,
-      facilities: seedFacilities,
-      departments: seedDepartmentNames.map((name) => ({
-        id: `dept-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
-        facilityId: CITY_MEDICAL.facilityId,
-        name,
-      })) as Department[],
-      attendanceRecords: [] as AttendanceRecord[],
-    };
 
 export function AppDataProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuthRole();
@@ -391,43 +408,67 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   ]);
 
   React.useEffect(() => {
+    // Not gated on `user?.id`: RLS already scopes every row this client can
+    // receive per table, so this can subscribe as soon as Supabase is
+    // configured and simply deliver nothing until a session exists.
     if (!isSupabaseConfigured) return;
     const supabase = createClient();
     const channel = supabase
-      .channel("super-admin-approvals")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "doctors" },
-        (payload) => {
-          const mapped = mapDoctorRow(payload.new as Record<string, unknown>);
-          setDoctors((prev) =>
-            prev.some((d) => d.id === mapped.id)
-              ? prev.map((d) => (d.id === mapped.id ? mapped : d))
-              : [mapped, ...prev]
-          );
-        }
+      .channel("app-data-sync")
+      .on<Tables<"doctors">>("postgres_changes", { event: "*", schema: "public", table: "doctors" }, (payload) =>
+        applyRealtimeChange(setDoctors, payload, mapDoctorRow)
       )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "facilities" },
-        (payload) => {
-          const mapped = mapFacilityRow(payload.new as Record<string, unknown>);
-          setFacilities((prev) =>
-            prev.some((f) => f.id === mapped.id)
-              ? prev.map((f) => (f.id === mapped.id ? mapped : f))
-              : [mapped, ...prev]
-          );
-        }
+      .on<Tables<"facilities">>("postgres_changes", { event: "*", schema: "public", table: "facilities" }, (payload) =>
+        applyRealtimeChange(setFacilities, payload, mapFacilityRow)
       )
-      .subscribe((status) => {
+      .on<Tables<"shifts">>("postgres_changes", { event: "*", schema: "public", table: "shifts" }, (payload) =>
+        applyRealtimeChange(setShifts, payload, mapShiftRow)
+      )
+      .on<Tables<"applications">>("postgres_changes", { event: "*", schema: "public", table: "applications" }, (payload) =>
+        applyRealtimeChange(setApplications, payload, mapApplicationRow)
+      )
+      .on<Tables<"replacement_requests">>(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "replacement_requests" },
+        (payload) => applyRealtimeChange(setReplacementRequests, payload, mapReplacementRequestRow)
+      )
+      .on<Tables<"payouts">>("postgres_changes", { event: "*", schema: "public", table: "payouts" }, (payload) =>
+        applyRealtimeChange(setPayments, payload, mapPayoutRow)
+      )
+      .on<Tables<"ratings">>("postgres_changes", { event: "*", schema: "public", table: "ratings" }, (payload) =>
+        applyRealtimeChange(setRatings, payload, mapRatingRow)
+      )
+      .on<Tables<"departments">>("postgres_changes", { event: "*", schema: "public", table: "departments" }, (payload) =>
+        applyRealtimeChange(setDepartments, payload, mapDepartmentRow)
+      )
+      .on<Tables<"attendance_records">>(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "attendance_records" },
+        (payload) => applyRealtimeChange(setAttendanceRecords, payload, mapAttendanceRow)
+      )
+      .on<Tables<"notifications">>("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) =>
+        applyRealtimeChange(setNotifications, payload, mapNotificationRow)
+      )
+      .subscribe((status, err) => {
         if (status !== "SUBSCRIBED" && status !== "CLOSED")
-          reportSupabase("AppDataProvider.realtime", `channel status: ${status}`);
+          reportSupabase("AppDataProvider.realtime", err ?? `channel status: ${status}`);
       });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [
+    setDoctors,
+    setFacilities,
+    setShifts,
+    setApplications,
+    setReplacementRequests,
+    setPayments,
+    setRatings,
+    setDepartments,
+    setAttendanceRecords,
+    setNotifications,
+  ]);
 
   React.useEffect(() => {
     if (!isSupabaseConfigured || !user?.id) return;
@@ -468,7 +509,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapShiftRow(data as Record<string, unknown>);
+        const persisted = mapShiftRow(data);
         setShifts((prev) => prev.map((s) => (s.id === newShift.id ? persisted : s)));
       }
       return newShift;
@@ -530,7 +571,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (data) {
-        const persisted = mapApplicationRow(data as Record<string, unknown>);
+        const persisted = mapApplicationRow(data);
         setApplications((prev) => prev.map((a) => (a.id === newApp.id ? persisted : a)));
       }
     },
@@ -553,17 +594,43 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setApplications]
   );
 
-  const approveAndProcessPayment = React.useCallback(
+  // Hospital-side: marks a payout ready to pay - funds move from "Pending
+  // Approval" into the doctor's available balance. This is deliberately not
+  // also "processed" - the doctor still has to withdraw it (see
+  // `withdrawPayout` below), matching the "Approved" vs "Payment Processed"
+  // distinction the Wallet & Payouts / Post Shift pages already draw.
+  const approvePayment = React.useCallback(
     async (id: string) => {
       const now = new Date().toISOString();
       let prevPayments: PostShiftRecord[] = [];
       setPayments((prev) => {
         prevPayments = prev;
-        return prev.map((p) =>
-          p.id === id
-            ? { ...p, status: "payment_processed", approvedAt: p.approvedAt ?? now, paidAt: now }
-            : p
-        );
+        return prev.map((p) => (p.id === id ? { ...p, status: "approved", approvedAt: now } : p));
+      });
+      const { error } = await updatePayoutStatusInSupabase(id, {
+        status: "approved",
+        approvedAt: now,
+      });
+      if (error) {
+        setPayments(prevPayments);
+        toast.error(`Couldn't approve payment: ${error}`);
+      }
+    },
+    [setPayments]
+  );
+
+  // Doctor-side: moves an already-approved payout to "Payment Processed"
+  // (paid out). This is what the Wallet & Payouts "Withdraw to Bank" button
+  // actually calls - only "approved" payouts are eligible, and RLS (the
+  // doctor owns the row via `doctors.profile_id = auth.uid()`) already
+  // allows this without any hospital action.
+  const withdrawPayout = React.useCallback(
+    async (id: string) => {
+      const now = new Date().toISOString();
+      let prevPayments: PostShiftRecord[] = [];
+      setPayments((prev) => {
+        prevPayments = prev;
+        return prev.map((p) => (p.id === id ? { ...p, status: "payment_processed", paidAt: now } : p));
       });
       const { error } = await updatePayoutStatusInSupabase(id, {
         status: "payment_processed",
@@ -571,8 +638,9 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) {
         setPayments(prevPayments);
-        toast.error(`Couldn't process payment: ${error}`);
+        toast.error(`Couldn't process withdrawal: ${error}`);
       }
+      return !error;
     },
     [setPayments]
   );
@@ -609,6 +677,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setNotifications]
   );
 
+  // Sends a notification to another user (an invite, a break/issue report,
+  // etc). Deliberately no optimistic update to the local `notifications`
+  // slice - that slice is this signed-in user's own inbox, and the
+  // recipient here is someone else entirely.
+  const createNotification = React.useCallback(
+    async (recipientProfileId: string, notification: Pick<AppNotification, "title" | "body" | "type" | "topic">) => {
+      const { error } = await createNotificationInSupabase(recipientProfileId, {
+        id: crypto.randomUUID(),
+        ...notification,
+      });
+      if (error) {
+        toast.error(`Couldn't send notification: ${error}`);
+        return false;
+      }
+      return true;
+    },
+    []
+  );
+
   // `registerDoctor` / `registerSelfDoctor` / `registerHospital` have no writer:
   // the `doctors` / `facilities` rows are inserted by the onboarding wizards
   // (which own the auth user id) and replayed here by the realtime effect. They
@@ -637,6 +724,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           identity: false,
           hospitalApproval: false,
         },
+        basicInfoStatus: "pending",
         firstName: input.firstName,
         lastName: input.lastName,
         department: input.department,
@@ -664,6 +752,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           identity: false,
           hospitalApproval: false,
         },
+        basicInfoStatus: "pending",
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
@@ -686,6 +775,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           accreditation: false,
           authorizedSignatory: false,
         },
+        basicInfoStatus: "pending",
         ...input,
         id: input.id ?? crypto.randomUUID(),
       };
@@ -740,7 +830,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reviewDoctorDocument = React.useCallback(
-    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+    async (id: string, docKey: string, decision: "approved" | "rejected", reason?: string) => {
       let prevDoctors: Doctor[] = [];
       let profileId: string | undefined;
       let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
@@ -754,7 +844,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           if (!current) return d;
           const updatedDocs: Record<string, UploadedFileMetadata> = {
             ...docs,
-            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+            [docKey]: {
+              ...current,
+              status: decision,
+              reviewedAt: new Date().toISOString(),
+              rejectionReason: decision === "rejected" ? reason : undefined,
+            },
           };
           nextDocuments = updatedDocs;
           const entries = Object.values(updatedDocs);
@@ -829,6 +924,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         setDoctors(prevDoctors);
         reportSupabase(`markDoctorDocumentViewed(${id})`, error);
+      }
+    },
+    [setDoctors]
+  );
+
+  const reviewDoctorBasicInfo = React.useCallback(
+    async (id: string, decision: Exclude<DocumentReviewStatus, "pending">, reason?: string) => {
+      let prevDoctors: Doctor[] = [];
+      setDoctors((prev) => {
+        prevDoctors = prev;
+        return prev.map((d) =>
+          d.id === id
+            ? {
+                ...d,
+                basicInfoStatus: decision,
+                basicInfoReviewedAt: new Date().toISOString(),
+                basicInfoRejectionReason: decision === "rejected" ? reason : undefined,
+              }
+            : d
+        );
+      });
+
+      toast.success(decision === "approved" ? "Basic info approved." : "Basic info rejected.");
+
+      const { error } = await updateDoctorBasicInfoReviewInSupabase(id, decision, reason);
+      if (error) {
+        setDoctors(prevDoctors);
+        toast.error(`Couldn't save the decision: ${error}`);
       }
     },
     [setDoctors]
@@ -909,6 +1032,25 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     [setDoctors]
   );
 
+  const updateFacilityProfile = React.useCallback(
+    async (
+      id: string,
+      patch: Partial<Pick<Facility, "name" | "address" | "city" | "phone" | "email" | "contactPerson">>
+    ) => {
+      let prevFacilities: Facility[] = [];
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) => (f.id === id ? { ...f, ...patch } : f));
+      });
+      const { error } = await updateFacilityProfileInSupabase(id, patch);
+      if (error) {
+        setFacilities(prevFacilities);
+        toast.error(`Couldn't update organization profile: ${error}`);
+      }
+    },
+    [setFacilities]
+  );
+
   const createReplacementRequest = React.useCallback(
     async (input: NewReplacementRequestInput): Promise<ReplacementRequest> => {
       const newRequest: ReplacementRequest = {
@@ -929,7 +1071,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapReplacementRequestRow(data as Record<string, unknown>);
+        const persisted = mapReplacementRequestRow(data);
         setReplacementRequests((prev) =>
           prev.map((r) => (r.id === newRequest.id ? persisted : r))
         );
@@ -1111,7 +1253,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapRatingRow(data as Record<string, unknown>);
+        const persisted = mapRatingRow(data);
         setRatings((prev) => prev.map((r) => (r.id === newRating.id ? persisted : r)));
       }
       return newRating;
@@ -1149,7 +1291,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const reviewFacilityDocument = React.useCallback(
-    async (id: string, docKey: string, decision: "approved" | "rejected") => {
+    async (id: string, docKey: string, decision: "approved" | "rejected", reason?: string) => {
       let prevFacilities: Facility[] = [];
       let profileId: string | undefined;
       let nextDocuments: Record<string, UploadedFileMetadata> | null = null;
@@ -1163,7 +1305,12 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
           if (!current) return f;
           const updatedDocs: Record<string, UploadedFileMetadata> = {
             ...docs,
-            [docKey]: { ...current, status: decision, reviewedAt: new Date().toISOString() },
+            [docKey]: {
+              ...current,
+              status: decision,
+              reviewedAt: new Date().toISOString(),
+              rejectionReason: decision === "rejected" ? reason : undefined,
+            },
           };
           nextDocuments = updatedDocs;
           const entries = Object.values(updatedDocs);
@@ -1234,6 +1381,34 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       if (error) {
         setFacilities(prevFacilities);
         reportSupabase(`markFacilityDocumentViewed(${id})`, error);
+      }
+    },
+    [setFacilities]
+  );
+
+  const reviewFacilityBasicInfo = React.useCallback(
+    async (id: string, decision: Exclude<DocumentReviewStatus, "pending">, reason?: string) => {
+      let prevFacilities: Facility[] = [];
+      setFacilities((prev) => {
+        prevFacilities = prev;
+        return prev.map((f) =>
+          f.id === id
+            ? {
+                ...f,
+                basicInfoStatus: decision,
+                basicInfoReviewedAt: new Date().toISOString(),
+                basicInfoRejectionReason: decision === "rejected" ? reason : undefined,
+              }
+            : f
+        );
+      });
+
+      toast.success(decision === "approved" ? "Basic info approved." : "Basic info rejected.");
+
+      const { error } = await updateFacilityBasicInfoReviewInSupabase(id, decision, reason);
+      if (error) {
+        setFacilities(prevFacilities);
+        toast.error(`Couldn't save the decision: ${error}`);
       }
     },
     [setFacilities]
@@ -1476,15 +1651,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateApplicationStatus,
       applyToShift,
       withdrawApplication,
-      approveAndProcessPayment,
+      approvePayment,
+      withdrawPayout,
       requestPaymentChanges,
       markNotificationRead,
+      createNotification,
       registerDoctor,
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
       markDoctorDocumentViewed,
+      reviewDoctorBasicInfo,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1496,8 +1674,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
+      reviewFacilityBasicInfo,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
@@ -1526,15 +1706,18 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       updateApplicationStatus,
       applyToShift,
       withdrawApplication,
-      approveAndProcessPayment,
+      approvePayment,
+      withdrawPayout,
       requestPaymentChanges,
       markNotificationRead,
+      createNotification,
       registerDoctor,
       registerSelfDoctor,
       registerHospital,
       updateDoctorVerification,
       reviewDoctorDocument,
       markDoctorDocumentViewed,
+      reviewDoctorBasicInfo,
       updateDoctorProfile,
       assignDoctorToShift,
       respondToShiftAssignment,
@@ -1546,8 +1729,10 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
       toggleSaveShift,
       submitRating,
       updateFacilityVerification,
+      updateFacilityProfile,
       reviewFacilityDocument,
       markFacilityDocumentViewed,
+      reviewFacilityBasicInfo,
       approveFacilityRegistration,
       rejectFacilityRegistration,
       approveDoctorRegistration,
@@ -1563,12 +1748,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return (
-    <AppDataContext.Provider value={value}>
-      {children}
-      <OfflineModeBanner />
-    </AppDataContext.Provider>
-  );
+  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
 }
 
 export function useAppData() {

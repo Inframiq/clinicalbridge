@@ -9,7 +9,8 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { DataTable } from "@/components/data-table/data-table";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
 import { useShifts } from "@/hooks/use-shifts";
-import { currentWorkingDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { ReplacementRequest, ReplacementRequestStatus } from "@/types";
 
@@ -23,9 +24,12 @@ const statusMeta: Record<ReplacementRequestStatus, { label: string; tone: "succe
 export default function WorkingDoctorReplacementRequestsPage() {
   const { replacementRequests } = useReplacementRequests();
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
+  const { profile } = useAuthRole();
+  const myDoctor = doctors.find((d) => d.profileId === profile?.id);
 
   const myRequests = replacementRequests.filter(
-    (r) => r.requestingDoctorId === currentWorkingDoctor.id
+    (r) => r.requestingDoctorId === myDoctor?.id
   );
   const pending = myRequests.filter((r) => r.status === "pending").length;
   const approved = myRequests.filter((r) => r.status === "approved").length;

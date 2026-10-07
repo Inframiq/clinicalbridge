@@ -21,13 +21,18 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, ROLE_HOME, SELECTABLE_ROLES } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_HOME, ROLE_ONBOARDING, SELF_SERVE_ROLES } from "@/lib/roles";
+import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
+import { emailField } from "@/lib/validation";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  email: emailField,
+  // Deliberately not raised to the signup/reset 8-char minimum - accounts
+  // created before that change may still have a 6-7 char password, and
+  // login must keep accepting it. Only a sane upper bound is added here.
+  password: z.string().min(6, "Password must be at least 6 characters").max(128, "Password is too long"),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -66,16 +71,9 @@ function MicrosoftIcon() {
   );
 }
 
-const roleOnboardingPaths: Record<UserRole, string> = {
-  hospital: "/onboarding/hospital",
-  working_doctor: "/onboarding/working-doctor",
-  locum_tenens: "/onboarding/locum-tenens",
-  super_admin: "/super-admin/dashboard",
-};
-
 export function LoginForm() {
   const router = useRouter();
-  const { login, signInWithSupabase, signInWithOAuth } = useAuthRole();
+  const { signInWithSupabase, signInWithOAuth } = useAuthRole();
   const [role, setRole] = useState<UserRole>("hospital");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -103,7 +101,7 @@ export function LoginForm() {
 
     if (!completedOnboarding || verificationStatus === "Needs Changes") {
       toast.info("Please complete your onboarding profile.");
-      router.push(roleOnboardingPaths[userRole] || "/onboarding");
+      router.push(ROLE_ONBOARDING[userRole] || "/onboarding");
       return;
     }
 
@@ -125,33 +123,32 @@ export function LoginForm() {
       return;
     }
 
-    toast.success("Signed in successfully");
+    // Queued instead of shown here - the redirect below only starts the
+    // navigation, it doesn't wait for the dashboard to actually render, so
+    // an immediate toast would pop up mid-transition. AppShell shows this
+    // once the destination dashboard is actually on screen.
+    queuePendingToast("Signed in successfully");
     router.push(ROLE_HOME[userRole]);
   }
 
   async function onSubmit(data: FormValues) {
-    if (data.email && data.password) {
-      const { error, profile } = await signInWithSupabase(data.email, data.password, role);
+    const { error, profile } = await signInWithSupabase(data.email, data.password, role);
 
-      if (error) {
-        toast.error(error.message || "Failed to sign in with Supabase Auth");
-        return;
-      }
-
-      if (profile) {
-        routeBasedOnStatus(
-          profile.role,
-          profile.completed_onboarding ?? false,
-          profile.verification_status || "Pending"
-        );
-        return;
-      }
+    if (error) {
+      toast.error(error.message || "Failed to sign in");
+      return;
     }
 
-    // Fallback demo mode login
-    login(role);
-    toast.success("Signed in (demo mode)");
-    router.push(ROLE_HOME[role]);
+    if (!profile) {
+      toast.error("Sign-in succeeded but no profile was found. Please contact support.");
+      return;
+    }
+
+    routeBasedOnStatus(
+      profile.role,
+      profile.completed_onboarding ?? false,
+      profile.verification_status || "Pending"
+    );
   }
 
   async function handleOAuth(provider: "google" | "azure") {
@@ -176,8 +173,15 @@ export function LoginForm() {
         <p className="mb-2.5 font-mono text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
           Sign in as
         </p>
+        {/*
+          Super Admin has no tile here and can't be self-selected - there is no
+          standalone super-admin login. The designated super-admin account signs
+          in through any of these three tiles and is routed to the super-admin
+          dashboard automatically once its profile role comes back as
+          "super_admin" (see the mismatch bypass in auth-provider.tsx).
+        */}
         <div className="grid grid-cols-3 gap-2">
-          {SELECTABLE_ROLES.map((value) => {
+          {SELF_SERVE_ROLES.map((value) => {
             const config = ROLE_CONFIG[value];
             const Icon = config.icon;
             const isActive = role === value;

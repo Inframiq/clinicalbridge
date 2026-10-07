@@ -14,6 +14,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { LicenseExpiryAlert } from "@/components/dashboard/license-expiry-alert";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
@@ -23,45 +24,50 @@ import { TrendAreaChart } from "@/components/dashboard/charts/trend-area-chart";
 import { useShifts } from "@/hooks/use-shifts";
 import { useApplications } from "@/hooks/use-applications";
 import { usePayments } from "@/hooks/use-payments";
+import { useDoctors } from "@/hooks/use-doctors";
 import { useAppData } from "@/context/app-data-provider";
-import { currentDoctor } from "@/lib/mock-data/doctors";
-import { earningsSeries } from "@/lib/mock-data/analytics";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { shiftStatusMeta, applicationStatusMeta } from "@/lib/status";
+import type { Doctor } from "@/types";
 
-function profileCompletionPct() {
+function profileCompletionPct(myDoctor: Doctor | undefined) {
+  if (!myDoctor) return 0;
   const checks = [
-    !!currentDoctor.firstName,
-    !!currentDoctor.email,
-    !!currentDoctor.phone,
-    !!currentDoctor.specialty,
-    !!currentDoctor.licenseNumber,
-    !!currentDoctor.licenseExpiry,
-    currentDoctor.preferredLocations.length > 0,
-    !!(currentDoctor.languages && currentDoctor.languages.length > 0),
-    !!currentDoctor.replacementPreferences,
-    !!currentDoctor.verified,
+    !!myDoctor.firstName,
+    !!myDoctor.email,
+    !!myDoctor.phone,
+    !!myDoctor.specialty,
+    !!myDoctor.licenseNumber,
+    !!myDoctor.licenseExpiry,
+    myDoctor.preferredLocations.length > 0,
+    !!(myDoctor.languages && myDoctor.languages.length > 0),
+    !!myDoctor.replacementPreferences,
+    !!myDoctor.verified,
   ];
   return Math.round((checks.filter(Boolean).length / checks.length) * 100);
 }
 
 export default function DoctorDashboardPage() {
+  const { profile } = useAuthRole();
+  const { doctors } = useDoctors();
+  const myDoctor = doctors.find((d) => d.profileId === profile?.id);
+  const myDoctorId = myDoctor?.id;
   const { shifts } = useShifts();
   const { applications, applyToShift } = useApplications();
   const { payments } = usePayments();
   const { notifications } = useAppData();
 
-  const myApplications = applications.filter((a) => a.doctorId === currentDoctor.id);
-  const totalHoursWorked = payments
-    .filter((p) => p.doctorId === currentDoctor.id)
-    .reduce((sum, p) => sum + p.hours, 0);
+  const myApplications = applications.filter((a) => a.doctorId === myDoctorId);
+  const myPayments = payments.filter((p) => p.doctorId === myDoctorId);
+  const totalHoursWorked = myPayments.reduce((sum, p) => sum + p.hours, 0);
   const unreadNotifications = notifications.filter((n) => !n.read);
   const myShiftIds = new Set(myApplications.map((a) => a.shiftId));
   const currentShift = shifts.find(
-    (s) => s.assignedDoctorId === currentDoctor.id && s.status === "active"
+    (s) => s.assignedDoctorId === myDoctorId && s.status === "active"
   );
   const upcoming = shifts.filter(
-    (s) => s.assignedDoctorId === currentDoctor.id && (s.status === "confirmed" || s.status === "pending")
+    (s) => s.assignedDoctorId === myDoctorId && (s.status === "confirmed" || s.status === "pending")
   );
   const availableShifts = shifts
     .filter((s) => s.status === "open" && s.title === currentShift?.title)
@@ -70,12 +76,20 @@ export default function DoctorDashboardPage() {
     .filter((s) => !myShiftIds.has(s.id))
     .slice(0, 4);
 
+  const earningsSeries = Object.values(
+    myPayments.reduce<Record<string, { date: string; earnings: number }>>((acc, p) => {
+      const date = p.submittedAt.slice(0, 10);
+      acc[date] ??= { date, earnings: 0 };
+      acc[date].earnings += p.netPayout;
+      return acc;
+    }, {})
+  ).sort((a, b) => a.date.localeCompare(b.date));
   const thisWeekEarnings = earningsSeries[earningsSeries.length - 1]?.earnings ?? 0;
 
   return (
     <div>
       <PageHeader
-        title={`Good morning, Dr. ${currentDoctor.lastName} 👋`}
+        title={`Good morning${myDoctor ? `, Dr. ${myDoctor.lastName}` : ""} 👋`}
         description="Here's what's on your schedule today."
         actions={
           <Button asChild>
@@ -86,13 +100,14 @@ export default function DoctorDashboardPage() {
         }
       />
 
+      <LicenseExpiryAlert licenseExpiry={myDoctor?.licenseExpiry} updateHref="/locum-tenens/settings" />
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="This Week's Earnings"
           value={formatCurrency(thisWeekEarnings, { decimals: false })}
           icon={IndianRupee}
           iconTone="success"
-          delta={{ value: "+15%", positive: true }}
         />
         <StatCard label="Upcoming Shifts" value={String(upcoming.length + (currentShift ? 1 : 0))} icon={CalendarCheck} iconTone="brand" />
         <StatCard
@@ -101,16 +116,16 @@ export default function DoctorDashboardPage() {
           icon={ClipboardList}
           iconTone="warning"
         />
-        <StatCard label="Rating" value={currentDoctor.rating.toFixed(1)} icon={Star} iconTone="info" helpText={`${currentDoctor.reviewCount} reviews`} />
+        <StatCard label="Rating" value={(myDoctor?.rating ?? 0).toFixed(1)} icon={Star} iconTone="info" helpText={`${myDoctor?.reviewCount ?? 0} reviews`} />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <StatCard label="Total Hours Worked" value={`${totalHoursWorked}h`} icon={Clock3} iconTone="neutral" />
         <StatCard
           label="Profile Completion"
-          value={`${profileCompletionPct()}%`}
+          value={`${profileCompletionPct(myDoctor)}%`}
           icon={UserCheck}
-          iconTone={profileCompletionPct() === 100 ? "success" : "warning"}
+          iconTone={profileCompletionPct(myDoctor) === 100 ? "success" : "warning"}
         />
       </div>
 
@@ -136,8 +151,10 @@ export default function DoctorDashboardPage() {
                 </div>
                 <Button
                   size="sm"
+                  disabled={!myDoctorId}
                   onClick={() => {
-                    applyToShift(shift.id, currentDoctor.id);
+                    if (!myDoctorId) return;
+                    applyToShift(shift.id, myDoctorId);
                     toast.success(`Applied to ${shift.title}`);
                   }}
                 >

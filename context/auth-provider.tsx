@@ -2,25 +2,28 @@
 
 import * as React from "react";
 import type { UserRole } from "@/types";
-import {
-  currentLocumTenensDoctor,
-  currentWorkingDoctor,
-} from "@/lib/mock-data/doctors";
-import { currentFacility } from "@/lib/mock-data/organizations";
-import { useLocalStorageState } from "@/hooks/use-local-storage-state";
+import { useLocalStorageState, clearAllLocalStorageState } from "@/hooks/use-local-storage-state";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { LEGAL_VERSION } from "@/lib/legal";
 import { reportSupabase } from "@/lib/supabase/log";
-import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { SELF_SERVE_ROLES } from "@/lib/roles";
+import type { User } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 
 export interface UserProfile {
   id: string;
   email: string;
   role: UserRole;
   full_name?: string;
+  phone?: string;
+  avatar_url?: string;
   verified: boolean;
   completed_onboarding: boolean;
   verification_status: string; // 'Pending' | 'Submitted' | 'Under Review' | 'Needs Changes' | 'Rejected' | 'Approved'
+  created_at?: string;
+  /** Per-topic notification toggles. Topic keys are owned by each role's Settings page, not fixed here. */
+  notification_preferences?: Record<string, boolean>;
 }
 
 interface AuthSession {
@@ -32,7 +35,6 @@ interface AuthSession {
 }
 
 interface AuthContextValue extends AuthSession {
-  login: (role: UserRole) => void;
   logout: () => Promise<void>;
   signInWithSupabase: (
     email: string,
@@ -55,6 +57,11 @@ interface AuthContextValue extends AuthSession {
   resetPasswordForEmail: (email: string) => Promise<{ error: Error | null }>;
   updatePassword: (password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<UserProfile | null>;
+  updateAccountProfile: (patch: {
+    full_name?: string;
+    phone?: string;
+    notification_preferences?: Record<string, boolean>;
+  }) => Promise<{ error: Error | null }>;
   loading: boolean;
 }
 
@@ -76,7 +83,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Offline mode has no async auth bootstrap, so there is nothing to wait for.
   const [loading, setLoading] = React.useState<boolean>(isSupabaseConfigured);
 
-  const supabase = React.useMemo<SupabaseClient | null>(
+  const supabase = React.useMemo<TypedSupabaseClient | null>(
     () => (isSupabaseConfigured ? createClient() : null),
     []
   );
@@ -99,8 +106,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           reportSupabase("auth.fetchProfile", error);
         }
 
-        // If profile doesn't exist yet, insert a fallback profile record
-        const fallbackRole = userRole || "locum_tenens";
+        // If profile doesn't exist yet, insert a fallback profile record.
+        // `userRole` traces back to `auth.users.user_metadata.role`, which the
+        // signed-in user controls (it's whatever they sent at signup) - never
+        // trust it for a privileged role. This mirrors the same allowlist the
+        // `handle_new_user` DB trigger enforces server-side, so this client
+        // fallback can't be used to insert a row the trigger would have refused.
+        const fallbackRole =
+          userRole && (SELF_SERVE_ROLES as string[]).includes(userRole) ? userRole : "locum_tenens";
         const fallbackEmail = userEmail || "";
         const fallbackName = fullName || fallbackEmail.split("@")[0] || "User";
 
@@ -203,44 +216,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return profile;
   }, [supabase, fetchProfile, setSession]);
 
-  const login = React.useCallback(
-    (role: UserRole) => {
-      if (isSupabaseConfigured) {
-        reportSupabase("auth.login", "mock login ignored (online mode)");
-        return;
+  // Account-level fields only (full_name, phone, notification_preferences) -
+  // the privileged-column guard trigger on public.profiles (migration 012)
+  // rejects any attempt to change role/verified/verification_status through
+  // a plain UPDATE, so this can't be misused to self-approve or escalate.
+  const updateAccountProfile = React.useCallback(
+    async (patch: { full_name?: string; phone?: string; notification_preferences?: Record<string, boolean> }) => {
+      if (!supabase) return { error: new Error("Supabase is not configured") };
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { error: new Error("Not signed in") };
+      try {
+        const { error } = await supabase.from("profiles").update(patch).eq("id", user.id);
+        if (error) {
+          reportSupabase("auth.updateAccountProfile", error);
+          return { error: new Error(error.message) };
+        }
+        await refreshProfile();
+        return { error: null };
+      } catch (err: unknown) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        return { error };
       }
-
-      const identityByRole: Record<UserRole, { name: string; title: string }> = {
-        hospital: { name: currentFacility.name, title: "Hospital Administrator" },
-        working_doctor: {
-          name: `Dr. ${currentWorkingDoctor.firstName} ${currentWorkingDoctor.lastName}`,
-          title: currentWorkingDoctor.specialty,
-        },
-        locum_tenens: {
-          name: `Dr. ${currentLocumTenensDoctor.firstName} ${currentLocumTenensDoctor.lastName}`,
-          title: currentLocumTenensDoctor.specialty,
-        },
-        super_admin: { name: "Platform Admin", title: "Super Admin" },
-      };
-
-      const mockProfile: UserProfile = {
-        id: "mock-user-id",
-        email: `${role}@clinicalbridge.com`,
-        role,
-        full_name: identityByRole[role].name,
-        verified: true,
-        completed_onboarding: true,
-        verification_status: "Approved",
-      };
-
-      setSession({
-        role,
-        user: null,
-        profile: mockProfile,
-        ...identityByRole[role],
-      });
     },
-    [setSession]
+    [supabase, refreshProfile]
   );
 
   const signInWithSupabase = React.useCallback(
@@ -270,16 +268,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
           }
 
-          // Platform admins sign in from the same form as everyone else, with no
-          // role selector of their own. Their profile role is authoritative, so
-          // skip the mismatch guard for them and let the real role flow through
-          // to the session (the login form then routes them to the admin console).
-          if (
-            expectedRole &&
-            profile &&
-            profile.role !== expectedRole &&
-            profile.role !== "super_admin"
-          ) {
+          // The designated super-admin account has no dedicated login tile (see
+          // login-form.tsx) - it signs in through whichever of the three regular
+          // role tiles was clicked. Its real `profile.role` (set server-side,
+          // never client-controlled) always wins over whatever tile was
+          // selected, so skip the mismatch check in that one case.
+          if (expectedRole && profile && profile.role !== expectedRole && profile.role !== "super_admin") {
             const roleLabels: Record<UserRole, string> = {
               hospital: "Hospital / Clinic",
               working_doctor: "Working Doctor",
@@ -327,6 +321,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             data: {
               role,
               full_name: fullName,
+              // The signup form won't submit until the terms box is ticked;
+              // this records which version was agreed to, and when.
+              terms_version: LEGAL_VERSION,
+              terms_accepted_at: new Date().toISOString(),
             },
             // Bring the confirmation link back into the app instead of Supabase's
             // configured Site URL, so the user lands on the sign-in screen ready
@@ -451,13 +449,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // ignore
     }
+    clearAllLocalStorageState();
     setSession(defaultSession);
   }, [supabase, setSession]);
 
   const value = React.useMemo(
     () => ({
       ...session,
-      login,
       logout,
       signInWithSupabase,
       signUpWithSupabase,
@@ -466,11 +464,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,
+      updateAccountProfile,
       loading,
     }),
     [
       session,
-      login,
       logout,
       signInWithSupabase,
       signUpWithSupabase,
@@ -479,6 +477,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       resetPasswordForEmail,
       updatePassword,
       refreshProfile,
+      updateAccountProfile,
       loading,
     ]
   );

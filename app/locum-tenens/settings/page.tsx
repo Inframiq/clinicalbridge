@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Mail, MapPin, Phone, ShieldCheck, ShieldAlert, User } from "lucide-react";
+import { AccountDataCard } from "@/components/settings/account-data-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -13,8 +14,34 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useDoctors } from "@/hooks/use-doctors";
-import { currentDoctor } from "@/lib/mock-data/doctors";
-import { DEPARTMENTS } from "@/lib/mock-data/departments";
+import { useAuthRole } from "@/context/auth-provider";
+import { useNotificationPreferences } from "@/hooks/use-notification-preferences";
+import { emailField, optionalPhoneField, shortTextField, integerField } from "@/lib/validation";
+import { z } from "zod";
+
+const profileSchema = z.object({
+  email: emailField,
+  phone: optionalPhoneField,
+  locations: z.string().trim().max(300, "Must be 300 characters or fewer"),
+});
+
+const qualificationsSchema = z.object({
+  specialty: shortTextField(100),
+  subSpecialty: z.string().trim().max(80, "Must be 80 characters or fewer").optional().or(z.literal("")),
+  licenseNumber: shortTextField(40),
+  licenseExpiry: z.string().min(1, "Required"),
+  yearsOfExperience: shortTextField(30),
+  languages: z.string().trim().max(300, "Must be 300 characters or fewer"),
+  travelDistance: integerField(0, 500),
+});
+
+const DEPARTMENTS = [
+  "Emergency Department",
+  "Intensive Care Unit",
+  "Pediatrics Unit",
+  "Orthopedics",
+  "General Medicine",
+] as const;
 
 const notificationPrefs = [
   { id: "shift-invites", label: "New shift invitations", description: "Get notified about shifts matching your specialty." },
@@ -33,42 +60,81 @@ const VERIFICATION_LABELS: Record<string, string> = {
 };
 
 export default function DoctorSettingsPage() {
+  const { profile } = useAuthRole();
   const { doctors, updateDoctorProfile } = useDoctors();
-  const me = doctors.find((d) => d.id === currentDoctor.id) ?? currentDoctor;
+  const me = doctors.find((d) => d.profileId === profile?.id);
 
-  const [prefs, setPrefs] = useState<Record<string, boolean>>({
+  const {
+    prefs,
+    setPref,
+    save: savePrefs,
+    saving: savingPrefs,
+  } = useNotificationPreferences({
     "shift-invites": true,
     "application-updates": true,
     payments: true,
     messages: false,
   });
 
-  const [phone, setPhone] = useState(me.phone);
-  const [email, setEmail] = useState(me.email);
-  const [locations, setLocations] = useState(me.preferredLocations.join("; "));
+  const [phone, setPhone] = useState(me?.phone ?? "");
+  const [email, setEmail] = useState(me?.email ?? "");
+  const [locations, setLocations] = useState(me?.preferredLocations.join("; ") ?? "");
 
-  const [specialty, setSpecialty] = useState(me.specialty);
-  const [subSpecialty, setSubSpecialty] = useState(me.subSpecialty ?? "");
-  const [licenseNumber, setLicenseNumber] = useState(me.licenseNumber);
-  const [licenseExpiry, setLicenseExpiry] = useState(me.licenseExpiry);
-  const [yearsOfExperience, setYearsOfExperience] = useState(me.yearsOfExperience);
-  const [languages, setLanguages] = useState((me.languages ?? []).join(", "));
+  const [specialty, setSpecialty] = useState(me?.specialty ?? "");
+  const [subSpecialty, setSubSpecialty] = useState(me?.subSpecialty ?? "");
+  const [licenseNumber, setLicenseNumber] = useState(me?.licenseNumber ?? "");
+  const [licenseExpiry, setLicenseExpiry] = useState(me?.licenseExpiry ?? "");
+  const [yearsOfExperience, setYearsOfExperience] = useState(me?.yearsOfExperience ?? "");
+  const [languages, setLanguages] = useState((me?.languages ?? []).join(", "));
   const [travelDistance, setTravelDistance] = useState(
-    me.replacementPreferences?.preferredTravelDistanceMiles ?? 25
+    me?.replacementPreferences?.preferredTravelDistanceMiles ?? 25
   );
   const [preferredDepartments, setPreferredDepartments] = useState<string[]>(
-    me.replacementPreferences?.preferredDepartments ?? []
+    me?.replacementPreferences?.preferredDepartments ?? []
   );
   const [availableDays, setAvailableDays] = useState<string[]>(
-    me.replacementPreferences?.availableDays ?? DAYS
+    me?.replacementPreferences?.availableDays ?? DAYS
   );
+
+  // Form state is seeded from `me` above, but `me` only resolves once the
+  // real doctor row has loaded from Supabase (it's undefined on first
+  // render) - `useState`'s initial value only applies at mount, so without
+  // this the fields would stay permanently blank once the real data arrives.
+  // Adjusting state during render (React's documented pattern for this,
+  // guarded so it only fires once per doctor identity) triggers an
+  // immediate re-render before paint, unlike the same reset in an effect.
+  const [syncedId, setSyncedId] = useState<string | undefined>(undefined);
+  if (me && me.id !== syncedId) {
+    setSyncedId(me.id);
+    setPhone(me.phone);
+    setEmail(me.email);
+    setLocations(me.preferredLocations.join("; "));
+    setSpecialty(me.specialty);
+    setSubSpecialty(me.subSpecialty ?? "");
+    setLicenseNumber(me.licenseNumber);
+    setLicenseExpiry(me.licenseExpiry);
+    setYearsOfExperience(me.yearsOfExperience);
+    setLanguages((me.languages ?? []).join(", "));
+    setTravelDistance(me.replacementPreferences?.preferredTravelDistanceMiles ?? 25);
+    setPreferredDepartments(me.replacementPreferences?.preferredDepartments ?? []);
+    setAvailableDays(me.replacementPreferences?.availableDays ?? DAYS);
+  }
 
   function toggle(list: string[], setList: (v: string[]) => void, value: string) {
     setList(list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
   }
 
   const verification =
-    me.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
+    me?.verification ?? { medicalCouncil: false, degree: false, identity: false, hospitalApproval: false };
+
+  if (!me) {
+    return (
+      <div>
+        <PageHeader title="Settings" description="Manage your profile, qualifications, and preferences." />
+        <p className="text-sm text-muted-foreground">Loading your profile...</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -80,6 +146,7 @@ export default function DoctorSettingsPage() {
           <TabsTrigger value="qualifications">Qualifications</TabsTrigger>
           <TabsTrigger value="verification">Verification</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="mt-6 max-w-2xl">
@@ -92,10 +159,15 @@ export default function DoctorSettingsPage() {
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
+                  const result = profileSchema.safeParse({ phone, email, locations });
+                  if (!result.success) {
+                    toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+                    return;
+                  }
                   updateDoctorProfile(me.id, {
-                    phone,
-                    email,
-                    preferredLocations: locations.split(";").map((l) => l.trim()).filter(Boolean),
+                    phone: result.data.phone,
+                    email: result.data.email,
+                    preferredLocations: result.data.locations.split(";").map((l) => l.trim()).filter(Boolean),
                   });
                   toast.success("Profile updated");
                 }}
@@ -123,7 +195,14 @@ export default function DoctorSettingsPage() {
                     <FieldContent>
                       <div className="relative">
                         <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input id="email" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-9" />
+                        <Input
+                          id="email"
+                          type="email"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          maxLength={254}
+                          className="pl-9"
+                        />
                       </div>
                     </FieldContent>
                   </Field>
@@ -133,7 +212,14 @@ export default function DoctorSettingsPage() {
                       <FieldContent>
                         <div className="relative">
                           <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="pl-9" />
+                          <Input
+                            id="phone"
+                            type="tel"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            maxLength={20}
+                            className="pl-9"
+                          />
                         </div>
                       </FieldContent>
                     </Field>
@@ -146,6 +232,7 @@ export default function DoctorSettingsPage() {
                             id="locations"
                             value={locations}
                             onChange={(e) => setLocations(e.target.value)}
+                            maxLength={300}
                             className="pl-9"
                           />
                         </div>
@@ -175,13 +262,13 @@ export default function DoctorSettingsPage() {
                   <Field>
                     <FieldLabel htmlFor="specialty">Specialty</FieldLabel>
                     <FieldContent>
-                      <Input id="specialty" value={specialty} onChange={(e) => setSpecialty(e.target.value)} />
+                      <Input id="specialty" maxLength={100} value={specialty} onChange={(e) => setSpecialty(e.target.value)} />
                     </FieldContent>
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="subSpecialty">Sub-specialty</FieldLabel>
                     <FieldContent>
-                      <Input id="subSpecialty" value={subSpecialty} onChange={(e) => setSubSpecialty(e.target.value)} />
+                      <Input id="subSpecialty" maxLength={80} value={subSpecialty} onChange={(e) => setSubSpecialty(e.target.value)} />
                     </FieldContent>
                   </Field>
                 </div>
@@ -190,7 +277,7 @@ export default function DoctorSettingsPage() {
                   <Field>
                     <FieldLabel htmlFor="licenseNumber">Medical License Number</FieldLabel>
                     <FieldContent>
-                      <Input id="licenseNumber" value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} />
+                      <Input id="licenseNumber" maxLength={40} value={licenseNumber} onChange={(e) => setLicenseNumber(e.target.value)} />
                     </FieldContent>
                   </Field>
                   <Field>
@@ -212,6 +299,7 @@ export default function DoctorSettingsPage() {
                     <FieldContent>
                       <Input
                         id="experience"
+                        maxLength={30}
                         value={yearsOfExperience}
                         onChange={(e) => setYearsOfExperience(e.target.value)}
                       />
@@ -223,6 +311,7 @@ export default function DoctorSettingsPage() {
                       <Input
                         id="languages"
                         placeholder="English, Spanish"
+                        maxLength={300}
                         value={languages}
                         onChange={(e) => setLanguages(e.target.value)}
                       />
@@ -237,6 +326,8 @@ export default function DoctorSettingsPage() {
                       id="travelDistance"
                       type="number"
                       min={0}
+                      max={500}
+                      step={1}
                       value={travelDistance}
                       onChange={(e) => setTravelDistance(Number(e.target.value))}
                     />
@@ -280,15 +371,28 @@ export default function DoctorSettingsPage() {
                 <div className="flex justify-end">
                   <Button
                     onClick={() => {
-                      updateDoctorProfile(me.id, {
+                      const result = qualificationsSchema.safeParse({
                         specialty,
-                        subSpecialty: subSpecialty || undefined,
+                        subSpecialty,
                         licenseNumber,
                         licenseExpiry,
                         yearsOfExperience,
-                        languages: languages.split(",").map((l) => l.trim()).filter(Boolean),
+                        languages,
+                        travelDistance,
+                      });
+                      if (!result.success) {
+                        toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+                        return;
+                      }
+                      updateDoctorProfile(me.id, {
+                        specialty: result.data.specialty,
+                        subSpecialty: result.data.subSpecialty || undefined,
+                        licenseNumber: result.data.licenseNumber,
+                        licenseExpiry: result.data.licenseExpiry,
+                        yearsOfExperience: result.data.yearsOfExperience,
+                        languages: result.data.languages.split(",").map((l) => l.trim()).filter(Boolean),
                         replacementPreferences: {
-                          preferredTravelDistanceMiles: travelDistance,
+                          preferredTravelDistanceMiles: result.data.travelDistance,
                           preferredDepartments,
                           availableDays,
                         },
@@ -322,7 +426,7 @@ export default function DoctorSettingsPage() {
                         <ShieldCheck className="size-4" /> Verified
                       </span>
                     ) : (
-                      <span className="flex items-center gap-1.5 text-sm font-medium text-warning-foreground">
+                      <span className="flex items-center gap-1.5 text-sm font-medium text-warning">
                         <ShieldAlert className="size-4" /> Pending
                       </span>
                     )}
@@ -349,17 +453,23 @@ export default function DoctorSettingsPage() {
                     </div>
                     <Switch
                       checked={prefs[pref.id]}
-                      onCheckedChange={(checked) => setPrefs((p) => ({ ...p, [pref.id]: checked }))}
+                      onCheckedChange={(checked) => setPref(pref.id, checked)}
                     />
                   </div>
                 ))}
               </div>
               <Separator className="my-4" />
               <div className="flex justify-end">
-                <Button onClick={() => toast.success("Preferences saved")}>Save Preferences</Button>
+                <Button onClick={savePrefs} disabled={savingPrefs}>
+                  {savingPrefs ? "Saving..." : "Save Preferences"}
+                </Button>
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="privacy" className="mt-6 max-w-2xl">
+          <AccountDataCard />
         </TabsContent>
       </Tabs>
     </div>

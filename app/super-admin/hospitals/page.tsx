@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Building2, CheckCircle2, Clock3, ShieldAlert, ShieldX } from "lucide-react";
+import { Building2, CheckCircle2, Clock3, ShieldAlert, ShieldX, UserRound } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { StatusBadge } from "@/components/dashboard/status-badge";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table/data-table";
 import { VerifyHospitalDialog } from "@/components/forms/verify-hospital-dialog";
 import { useFacilities } from "@/hooks/use-facilities";
-import type { Facility } from "@/lib/mock-data/organizations";
+import type { Facility } from "@/lib/supabase/services/facilities";
 
 const statusMeta = {
   verified: { label: "Verified", tone: "success" as const },
@@ -21,7 +21,11 @@ export default function SuperAdminHospitalsPage() {
   const { facilities } = useFacilities();
 
   const verified = facilities.filter((f) => f.status === "verified").length;
-  const pending = facilities.filter((f) => f.status === "pending").length;
+  // A rejected hospital never flips `status` away from "pending" — exclude it
+  // explicitly so a closed application doesn't inflate the pending count.
+  const pending = facilities.filter(
+    (f) => f.status === "pending" && f.registrationStatus !== "Rejected"
+  ).length;
 
   const columns: ColumnDef<Facility>[] = useMemo(
     () => [
@@ -53,6 +57,20 @@ export default function SuperAdminHospitalsPage() {
         ),
       },
       {
+        id: "profile",
+        header: "Profile",
+        cell: ({ row }) => (
+          <VerifyHospitalDialog
+            facility={row.original}
+            trigger={
+              <Button variant="ghost" size="sm">
+                <UserRound className="size-3.5" /> View Profile
+              </Button>
+            }
+          />
+        ),
+      },
+      {
         id: "verification",
         header: "Documents",
         accessorFn: (row) =>
@@ -72,7 +90,7 @@ export default function SuperAdminHospitalsPage() {
                   ) : total > 0 && approved === total ? (
                     <CheckCircle2 className="size-3.5 text-success" />
                   ) : (
-                    <ShieldAlert className="size-3.5 text-warning-foreground" />
+                    <ShieldAlert className="size-3.5 text-warning" />
                   )}
                   {approved}/{total} docs
                 </Button>

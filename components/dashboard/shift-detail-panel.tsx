@@ -6,12 +6,12 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useAttendance } from "@/hooks/use-attendance";
 import { useAuthRole } from "@/context/auth-provider";
-import type { Shift } from "@/types";
+import type { Doctor, Shift } from "@/types";
 import { shiftStatusMeta } from "@/lib/status";
 import { formatCurrency, formatHoursMinutes } from "@/lib/format";
 import { getDoctorName } from "@/lib/selectors";
 
-export function ShiftDetailPanel({ shift }: { shift: Shift }) {
+export function ShiftDetailPanel({ shift, doctors }: { shift: Shift; doctors: Doctor[] }) {
   const meta = shiftStatusMeta[shift.status];
   const { attendanceRecords, verifyAttendance } = useAttendance();
   const { profile } = useAuthRole();
@@ -27,7 +27,7 @@ export function ShiftDetailPanel({ shift }: { shift: Shift }) {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
         <Person
-          name={getDoctorName(shift.assignedDoctorId)}
+          name={getDoctorName(doctors, shift.assignedDoctorId)}
           subtitle={shift.title}
         />
         {shift.codeRed ? (

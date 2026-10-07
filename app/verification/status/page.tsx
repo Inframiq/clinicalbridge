@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/layout/logo";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_HOME } from "@/lib/roles";
+import { ROLE_HOME, ROLE_ONBOARDING } from "@/lib/roles";
 
 export default function VerificationStatusPage() {
   return (
@@ -44,7 +44,13 @@ function VerificationStatusContent() {
   const router = useRouter();
   const { profile, role, logout } = useAuthRole();
 
-  const status = searchParams.get("status") || profile?.verification_status || "Submitted";
+  // Live `profile.verification_status` must win over the URL's `?status=` -
+  // that query param is only a same-render hint from the page that navigated
+  // here (e.g. login-form) for the first paint, before AuthProvider has
+  // fetched the profile. Once it loads, it reflects reality; keeping the URL
+  // param authoritative would freeze this page on its original status
+  // forever, since "Check Status Again" / "Refresh" just reload the same URL.
+  const status = profile?.verification_status || searchParams.get("status") || "Submitted";
 
   const renderContent = () => {
     switch (status) {
@@ -82,12 +88,7 @@ function VerificationStatusContent() {
             "Our compliance team noted missing or updated information required for your registration.",
           actionText: "Resume Onboarding",
           onAction: () => {
-            if (role) {
-              const path = role === "hospital" ? "/onboarding/hospital" : `/onboarding/${role.replace("_", "-")}`;
-              router.push(path);
-            } else {
-              router.push("/onboarding");
-            }
+            router.push(role ? ROLE_ONBOARDING[role] : "/onboarding");
           },
         };
 

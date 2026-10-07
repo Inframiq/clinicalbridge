@@ -6,7 +6,7 @@ import { Controller, useForm, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
-import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, Upload, Loader2 } from "lucide-react";
+import { BadgeCheck, CheckCircle2, ChevronLeft, ChevronRight, FileText, ShieldX, Upload, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,10 +23,10 @@ import { Stepper } from "@/components/forms/stepper";
 import { CircularProgress } from "@/components/dashboard/circular-progress";
 import { useAuthRole } from "@/context/auth-provider";
 import { useFacilities } from "@/hooks/use-facilities";
-import { useAutosave } from "@/hooks/use-autosave";
 import { uploadDocumentToStorage, type UploadedFileMetadata } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { describeSupabaseError, reportSupabase } from "@/lib/supabase/log";
+import { nameField, emailField, phoneField, shortTextField } from "@/lib/validation";
 
 const hospitalTypes = [
   "Multi-Specialty Hospital",
@@ -37,14 +37,14 @@ const hospitalTypes = [
 ];
 
 const schema = z.object({
-  name: z.string().min(1, "Required"),
-  registrationNumber: z.string().min(1, "Required"),
-  governmentLicense: z.string().min(1, "Required"),
+  name: shortTextField(150),
+  registrationNumber: shortTextField(50),
+  governmentLicense: shortTextField(50),
   hospitalType: z.string().min(1, "Required"),
-  city: z.string().min(1, "Required"),
-  contactPerson: z.string().min(1, "Required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().min(7, "Required"),
+  city: shortTextField(80),
+  contactPerson: nameField(80),
+  email: emailField,
+  phone: phoneField,
   documentsComplete: z.boolean().refine((v) => v, "Please upload all required documents before continuing"),
   agreeToTerms: z.boolean().refine((v) => v, "You must accept the terms"),
 });
@@ -67,6 +67,16 @@ const documentChecklist = [
   { key: "authorizedSignatory", label: "Authorized Signatory Proof" },
 ];
 
+// A document that was rejected in a previous review round still has a file
+// object (so the checklist "uploaded" check alone can't catch it) — it must
+// be replaced before the application counts as ready to resubmit.
+function allDocumentsResolved(files: Record<string, UploadedFileMetadata>) {
+  return (
+    Object.keys(files).length === documentChecklist.length &&
+    Object.values(files).every((f) => f.status !== "rejected")
+  );
+}
+
 const initialDefaults: FormValues = {
   name: "",
   registrationNumber: "",
@@ -82,24 +92,24 @@ const initialDefaults: FormValues = {
 
 export function HospitalOnboardingWizard() {
   const router = useRouter();
-  const { login, refreshProfile, profile } = useAuthRole();
+  const { refreshProfile, profile } = useAuthRole();
   const { facilities, registerHospital } = useFacilities();
   const [stepIndex, setStepIndex] = useState(0);
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFileMetadata>>({});
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { data: autosavedData, save: saveDraft, clear: clearDraft, isHydrated } = useAutosave<FormValues>(
-    "hospital_onboarding",
-    initialDefaults
-  );
-
+  // Deliberately NOT persisted anywhere client-side (no localStorage, no
+  // autosave draft): a fixed or reused browser-storage key was previously
+  // leaking one registrant's in-progress answers into the next person's
+  // onboarding form on the same browser. Form state now lives only in
+  // react-hook-form's in-memory state and is gone the moment this component
+  // unmounts (refresh, navigation away, or logout).
   const {
     register,
     control,
     trigger,
     watch,
-    reset,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
@@ -109,37 +119,23 @@ export function HospitalOnboardingWizard() {
 
   const values = watch();
 
+  // Resuming after "Needs Changes" re-fetches already-uploaded documents from
+  // Supabase (server-side, scoped to this account by `profile.id`) so the
+  // registrant doesn't have to re-upload every document (including ones a
+  // super admin already approved) just to fix the one that was rejected.
+  // This is account data pulled from the database, not a client-side cache.
   useEffect(() => {
-    const subscription = watch((value) => {
-      saveDraft(value as Partial<FormValues>);
-    });
-    return () => subscription.unsubscribe();
-  }, [watch, saveDraft]);
-
-  useEffect(() => {
-    if (isHydrated) {
-      reset(autosavedData);
-    }
-  }, [isHydrated, autosavedData, reset]);
-
-  // Resuming after "Needs Changes" clears the local autosave draft the moment
-  // the original application was submitted, so without this the applicant
-  // would have to re-upload every document (including ones a super admin
-  // already approved) just to fix the one that was rejected.
-  useEffect(() => {
-    if (!isHydrated || !profile?.id) return;
+    if (!profile?.id) return;
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = facilities.find((f) => f.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
       setUploadedFiles(existing.uploadedDocuments);
-      setValue(
-        "documentsComplete",
-        Object.keys(existing.uploadedDocuments).length === documentChecklist.length,
-        { shouldValidate: false }
-      );
+      setValue("documentsComplete", allDocumentsResolved(existing.uploadedDocuments), {
+        shouldValidate: false,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isHydrated, profile?.id]);
+  }, [profile?.id]);
 
   const uploadedCount = Object.keys(uploadedFiles).length;
   const progressPct = Math.round(((stepIndex + (uploadedCount > 0 ? 0.5 : 0)) / steps.length) * 100);
@@ -157,9 +153,7 @@ export function HospitalOnboardingWizard() {
 
     setUploadedFiles((prev) => {
       const next = { ...prev, [key]: metadata };
-      setValue("documentsComplete", Object.keys(next).length === documentChecklist.length, {
-        shouldValidate: false,
-      });
+      setValue("documentsComplete", allDocumentsResolved(next), { shouldValidate: false });
       return next;
     });
     toast.success(`${file.name} uploaded successfully!`);
@@ -259,8 +253,6 @@ export function HospitalOnboardingWizard() {
           return;
         }
 
-        clearDraft();
-        login("hospital");
         toast.success("Registration submitted! Your hospital is now waiting for approval.");
         router.push("/verification/status?status=Submitted");
       } catch (err: unknown) {
@@ -292,7 +284,7 @@ export function HospitalOnboardingWizard() {
                   <Field data-invalid={!!errors.name}>
                     <FieldLabel htmlFor="name">Hospital Name *</FieldLabel>
                     <FieldContent>
-                      <Input id="name" {...register("name")} />
+                      <Input id="name" maxLength={150} {...register("name")} />
                       <FieldError errors={[errors.name]} />
                     </FieldContent>
                   </Field>
@@ -300,14 +292,14 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.registrationNumber}>
                       <FieldLabel htmlFor="registrationNumber">Registration Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="registrationNumber" {...register("registrationNumber")} />
+                        <Input id="registrationNumber" maxLength={50} {...register("registrationNumber")} />
                         <FieldError errors={[errors.registrationNumber]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.governmentLicense}>
                       <FieldLabel htmlFor="governmentLicense">Government License No. *</FieldLabel>
                       <FieldContent>
-                        <Input id="governmentLicense" {...register("governmentLicense")} />
+                        <Input id="governmentLicense" maxLength={50} {...register("governmentLicense")} />
                         <FieldError errors={[errors.governmentLicense]} />
                       </FieldContent>
                     </Field>
@@ -340,7 +332,7 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.city}>
                       <FieldLabel htmlFor="city">Address (City, State) *</FieldLabel>
                       <FieldContent>
-                        <Input id="city" placeholder="New York, NY" {...register("city")} />
+                        <Input id="city" placeholder="New York, NY" maxLength={80} {...register("city")} />
                         <FieldError errors={[errors.city]} />
                       </FieldContent>
                     </Field>
@@ -348,7 +340,7 @@ export function HospitalOnboardingWizard() {
                   <Field data-invalid={!!errors.contactPerson}>
                     <FieldLabel htmlFor="contactPerson">Contact Person *</FieldLabel>
                     <FieldContent>
-                      <Input id="contactPerson" {...register("contactPerson")} />
+                      <Input id="contactPerson" maxLength={80} {...register("contactPerson")} />
                       <FieldError errors={[errors.contactPerson]} />
                     </FieldContent>
                   </Field>
@@ -356,14 +348,14 @@ export function HospitalOnboardingWizard() {
                     <Field data-invalid={!!errors.email}>
                       <FieldLabel htmlFor="email">Email Address *</FieldLabel>
                       <FieldContent>
-                        <Input id="email" type="email" {...register("email")} />
+                        <Input id="email" type="email" maxLength={254} {...register("email")} />
                         <FieldError errors={[errors.email]} />
                       </FieldContent>
                     </Field>
                     <Field data-invalid={!!errors.phone}>
                       <FieldLabel htmlFor="phone">Phone Number *</FieldLabel>
                       <FieldContent>
-                        <Input id="phone" {...register("phone")} />
+                        <Input id="phone" type="tel" maxLength={20} {...register("phone")} />
                         <FieldError errors={[errors.phone]} />
                       </FieldContent>
                     </Field>
@@ -377,46 +369,74 @@ export function HospitalOnboardingWizard() {
                     Upload the required documents to Supabase Storage (PDF, JPG, PNG — max 10MB).
                   </p>
                   {documentChecklist.map((doc) => {
-                    const isUploaded = !!uploadedFiles[doc.key];
+                    const uploaded = uploadedFiles[doc.key];
+                    const isRejected = uploaded?.status === "rejected";
                     const isUploading = uploadingKey === doc.key;
+                    const pickerInput = (
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleFileUpload(doc.key, file);
+                        }}
+                      />
+                    );
                     return (
-                      <div
-                        key={doc.key}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-border p-3"
-                      >
-                        <span className="flex shrink-0 items-center gap-2 text-sm">
-                          <FileText className="size-4 shrink-0 text-muted-foreground" /> {doc.label}
-                        </span>
-                        {isUploaded ? (
-                          <span
-                            title={uploadedFiles[doc.key].name}
-                            className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs font-medium text-success"
-                          >
-                            <CheckCircle2 className="size-3.5 shrink-0" />
-                            <span className="truncate">{uploadedFiles[doc.key].name}</span>
+                      <div key={doc.key} className="rounded-lg border border-border p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="flex shrink-0 items-center gap-2 text-sm">
+                            <FileText className="size-4 shrink-0 text-muted-foreground" /> {doc.label}
                           </span>
-                        ) : (
-                          <label className="shrink-0 cursor-pointer">
-                            <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
-                              <span>
-                                {isUploading ? (
-                                  <Loader2 className="size-3.5 animate-spin" />
-                                ) : (
-                                  <Upload className="size-3.5" />
-                                )}
-                                Upload
+                          {isRejected ? (
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="flex min-w-0 items-center gap-1 text-xs font-medium text-destructive">
+                                <ShieldX className="size-3.5 shrink-0" /> Rejected — re-upload
                               </span>
-                            </Button>
-                            <input
-                              type="file"
-                              className="hidden"
-                              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
-                              onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleFileUpload(doc.key, file);
-                              }}
-                            />
-                          </label>
+                              <label className="shrink-0 cursor-pointer">
+                                <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                  <span>
+                                    {isUploading ? (
+                                      <Loader2 className="size-3.5 animate-spin" />
+                                    ) : (
+                                      <Upload className="size-3.5" />
+                                    )}
+                                    Replace
+                                  </span>
+                                </Button>
+                                {pickerInput}
+                              </label>
+                            </div>
+                          ) : uploaded ? (
+                            <span
+                              title={uploaded.name}
+                              className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs font-medium text-success"
+                            >
+                              <CheckCircle2 className="size-3.5 shrink-0" />
+                              <span className="truncate">{uploaded.name}</span>
+                            </span>
+                          ) : (
+                            <label className="shrink-0 cursor-pointer">
+                              <Button type="button" size="sm" variant="outline" disabled={isUploading} asChild>
+                                <span>
+                                  {isUploading ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                  ) : (
+                                    <Upload className="size-3.5" />
+                                  )}
+                                  Upload
+                                </span>
+                              </Button>
+                              {pickerInput}
+                            </label>
+                          )}
+                        </div>
+                        {isRejected && uploaded?.rejectionReason && (
+                          <p className="mt-2 rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+                            <span className="font-medium">Reason: </span>
+                            {uploaded.rejectionReason}
+                          </p>
                         )}
                       </div>
                     );
@@ -505,18 +525,24 @@ export function HospitalOnboardingWizard() {
             <CardContent>
               <p className="mb-3 text-sm font-medium text-foreground">Document Checklist</p>
               <ul className="space-y-2">
-                {documentChecklist.map((doc) => (
-                  <li key={doc.key} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="min-w-0 truncate text-muted-foreground" title={doc.label}>
-                      {doc.label}
-                    </span>
-                    {uploadedFiles[doc.key] ? (
-                      <span className="shrink-0 text-xs font-medium text-success">Uploaded</span>
-                    ) : (
-                      <span className="shrink-0 text-xs font-medium text-destructive">Not uploaded</span>
-                    )}
-                  </li>
-                ))}
+                {documentChecklist.map((doc) => {
+                  const uploaded = uploadedFiles[doc.key];
+                  const isRejected = uploaded?.status === "rejected";
+                  return (
+                    <li key={doc.key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate text-muted-foreground" title={doc.label}>
+                        {doc.label}
+                      </span>
+                      {isRejected ? (
+                        <span className="shrink-0 text-xs font-medium text-destructive">Rejected</span>
+                      ) : uploaded ? (
+                        <span className="shrink-0 text-xs font-medium text-success">Uploaded</span>
+                      ) : (
+                        <span className="shrink-0 text-xs font-medium text-destructive">Not uploaded</span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </CardContent>
           </Card>

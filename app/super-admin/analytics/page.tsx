@@ -22,21 +22,16 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDoctors } from "@/hooks/use-doctors";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
-import {
-  earningsSeries,
-  specialtyBreakdown,
-  dayOfWeekBreakdown,
-  timeOfDayBreakdown,
-  performanceTrends,
-  topFacilities,
-} from "@/lib/mock-data/analytics";
+import { usePayments } from "@/hooks/use-payments";
 import { formatDate } from "@/lib/format";
 import { getDoctorName } from "@/lib/selectors";
+import { startHour24, timeSegmentFor, dayOfWeekBuckets } from "@/lib/analytics-time";
 import type { Doctor, ReplacementRequest } from "@/types";
-import type { Facility } from "@/lib/mock-data/organizations";
+import type { Facility } from "@/lib/supabase/services/facilities";
 
 const specialtyColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 const timeOfDayColors = ["var(--chart-1)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
+const TIME_SEGMENTS = ["Morning (6AM-12PM)", "Afternoon (12PM-6PM)", "Evening (6PM-12AM)", "Night (12AM-6AM)"];
 
 const requestStatusMeta = {
   pending: { label: "Pending", tone: "warning" as const },
@@ -50,6 +45,7 @@ export default function SuperAdminAnalyticsPage() {
   const { doctors } = useDoctors();
   const { facilities } = useFacilities();
   const { replacementRequests } = useReplacementRequests();
+  const { payments } = usePayments();
 
   const verifiedHospitals = facilities.filter((f) => f.status === "verified").length;
   const verifiedDoctors = doctors.filter((d) => d.verified).length;
@@ -95,7 +91,7 @@ export default function SuperAdminAnalyticsPage() {
       {
         id: "doctor",
         header: "Requested By",
-        accessorFn: (row) => getDoctorName(row.requestingDoctorId),
+        accessorFn: (row) => getDoctorName(doctors, row.requestingDoctorId),
       },
       { accessorKey: "preferredReplacementType", header: "Preferred Type" },
       {
@@ -113,8 +109,75 @@ export default function SuperAdminAnalyticsPage() {
         },
       },
     ],
-    []
+    [doctors]
   );
+
+  const earningsSeries = useMemo(() => {
+    const byDate = new Map<string, { earnings: number; hours: number }>();
+    for (const p of payments) {
+      const date = formatDate(p.submittedAt);
+      const entry = byDate.get(date) ?? { earnings: 0, hours: 0 };
+      entry.earnings += p.grossPay;
+      entry.hours += p.hours;
+      byDate.set(date, entry);
+    }
+    return Array.from(byDate.entries())
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([date, v]) => ({ date, earnings: v.earnings, hours: v.hours }));
+  }, [payments]);
+
+  const specialtyBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of doctors) counts.set(d.specialty, (counts.get(d.specialty) ?? 0) + 1);
+    return Array.from(counts.entries()).map(([specialty, count], i) => ({
+      label: specialty,
+      value: count,
+      color: specialtyColors[i % specialtyColors.length],
+    }));
+  }, [doctors]);
+
+  const dayOfWeekBreakdown = useMemo(() => dayOfWeekBuckets(shifts.map((s) => s.date)), [shifts]);
+
+  const timeOfDayBreakdown = useMemo(() => {
+    const counts = [0, 0, 0, 0];
+    for (const s of shifts) counts[timeSegmentFor(startHour24(s.startTime))] += 1;
+    return TIME_SEGMENTS.map((label, i) => ({ label, value: counts[i], color: timeOfDayColors[i] }));
+  }, [shifts]);
+
+  const pendingRequests = replacementRequests.filter((r) => r.status === "pending").length;
+
+  const performanceTrends = useMemo(
+    () => [
+      {
+        metric: "Hospital Verification Rate",
+        thisMonth: facilities.length === 0 ? "0%" : `${((verifiedHospitals / facilities.length) * 100).toFixed(1)}%`,
+        lastMonth: "—",
+        changePct: 0,
+      },
+      {
+        metric: "Doctor Verification Rate",
+        thisMonth: doctors.length === 0 ? "0%" : `${((verifiedDoctors / doctors.length) * 100).toFixed(1)}%`,
+        lastMonth: "—",
+        changePct: 0,
+      },
+      { metric: "Replacement Requests Pending", thisMonth: String(pendingRequests), lastMonth: "—", changePct: 0 },
+      { metric: "Total Payouts Processed", thisMonth: String(payments.filter((p) => p.status === "payment_processed").length), lastMonth: "—", changePct: 0 },
+    ],
+    [facilities.length, verifiedHospitals, doctors.length, verifiedDoctors, pendingRequests, payments]
+  );
+
+  const topFacilities = useMemo(() => {
+    const counts = new Map<string, { name: string; count: number }>();
+    for (const s of shifts) {
+      const entry = counts.get(s.facilityId) ?? { name: s.facilityName, count: 0 };
+      entry.count += 1;
+      counts.set(s.facilityId, entry);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([id, v]) => ({ id, label: v.name, value: `${v.count} shifts` }));
+  }, [shifts]);
 
   return (
     <div>
@@ -140,52 +203,42 @@ export default function SuperAdminAnalyticsPage() {
             ]}
             earningsSeries={earningsSeries}
             earningsLabel="Platform Volume"
-            specialtyBreakdown={specialtyBreakdown.map((s, i) => ({
-              label: s.specialty,
-              value: s.count,
-              color: specialtyColors[i % specialtyColors.length],
-            }))}
+            specialtyBreakdown={specialtyBreakdown}
             dayOfWeekBreakdown={dayOfWeekBreakdown}
-            timeOfDayBreakdown={timeOfDayBreakdown.map((t, i) => ({
-              label: t.segment,
-              value: t.shifts,
-              color: timeOfDayColors[i % timeOfDayColors.length],
-            }))}
+            timeOfDayBreakdown={timeOfDayBreakdown}
             performanceTrends={performanceTrends}
             topListTitle="Top Facilities"
-            topList={topFacilities.map((f) => ({
-              id: f.id,
-              label: f.name,
-              value: `${f.shiftsWorked} shifts`,
-            }))}
+            topList={topFacilities}
             insights={[
               {
                 icon: Lightbulb,
-                title: "Key Insight",
-                description: "Replacement request approvals are keeping shift fill rates high.",
+                title: "Replacement Workflow",
+                description: `${pendingRequests} requests awaiting hospital review.`,
                 linkLabel: "View Requests",
                 href: "#",
               },
               {
                 icon: Award,
                 title: "Top Facility",
-                description: "City Medical Center has the highest shift volume.",
+                description: topFacilities[0]
+                  ? `${topFacilities[0].label} has the highest shift volume.`
+                  : "No shift volume yet.",
                 linkLabel: "View Hospitals",
-                href: "#",
+                href: "/super-admin/hospitals",
               },
               {
                 icon: ShieldCheck,
                 title: "Compliance",
                 description: `${verifiedDoctors} of ${doctors.length} doctors have verified credentials.`,
                 linkLabel: "View Doctors",
-                href: "#",
+                href: "/super-admin/doctors",
               },
               {
                 icon: RefreshCw,
-                title: "Replacement Workflow",
-                description: `${replacementRequests.filter((r) => r.status === "pending").length} requests awaiting hospital review.`,
-                linkLabel: "View Requests",
-                href: "#",
+                title: "Hospitals",
+                description: `${verifiedHospitals} of ${facilities.length} hospitals are verified.`,
+                linkLabel: "View Hospitals",
+                href: "/super-admin/hospitals",
               },
             ]}
           />

@@ -1,14 +1,14 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { AppNotification } from "@/types";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapNotificationRow } from "../mappers";
 
 export async function getNotifications(
   userId: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: AppNotification[]; error: string | null }> {
   if (!isSupabaseConfigured) return { data: [], error: null };
   if (!isUuid(userId)) return { data: [], error: null };
@@ -34,7 +34,7 @@ export async function getNotifications(
 
 export async function markNotificationReadInSupabase(
   id: string,
-  client?: SupabaseClient
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(id)) {
@@ -63,8 +63,8 @@ export async function markNotificationReadInSupabase(
 
 export async function createNotificationInSupabase(
   userId: string,
-  notification: Pick<AppNotification, "id" | "title" | "body" | "type">,
-  client?: SupabaseClient
+  notification: Pick<AppNotification, "id" | "title" | "body" | "type" | "topic">,
+  client?: TypedSupabaseClient
 ): Promise<{ data: unknown; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(userId) || !isUuid(notification.id)) {
@@ -74,23 +74,23 @@ export async function createNotificationInSupabase(
   }
   client ??= createClient();
   try {
-    const { data, error } = await client
-      .from("notifications")
-      .insert({
-        id: notification.id,
-        user_id: userId,
-        title: notification.title,
-        body: notification.body,
-        type: notification.type,
-        read: false,
-      })
-      .select()
-      .single();
+    // No `.select()`: the recipient is usually someone else, and only the
+    // recipient may read a notification, so asking for the row back would make
+    // PostgREST reject an insert RLS actually allowed.
+    const { error } = await client.from("notifications").insert({
+      id: notification.id,
+      user_id: userId,
+      title: notification.title,
+      body: notification.body,
+      type: notification.type,
+      topic: notification.topic ?? null,
+      read: false,
+    });
     if (error) {
       reportSupabase(`createNotificationInSupabase(${notification.id})`, error);
       return { data: null, error: describeSupabaseError(error) };
     }
-    return { data, error: null };
+    return { data: null, error: null };
   } catch (err) {
     reportSupabase(`createNotificationInSupabase(${notification.id})`, err);
     return { data: null, error: describeSupabaseError(err) };

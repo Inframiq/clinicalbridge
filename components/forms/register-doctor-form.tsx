@@ -19,19 +19,19 @@ import { useDoctors } from "@/hooks/use-doctors";
 import { useDepartments } from "@/hooks/use-departments";
 import { useFacilities } from "@/hooks/use-facilities";
 import { useAuthRole } from "@/context/auth-provider";
-import { CITY_MEDICAL } from "@/context/app-data-provider";
+import { nameField, emailField, phoneField, licenseNumberField, shortTextField } from "@/lib/validation";
 
 const experienceOptions = ["0-2 Years", "2-4 Years", "4-6 Years", "6-8 Years", "8-10 Years", "10+ Years"];
 
 const schema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  licenseNumber: z.string().min(1, "Medical registration number is required"),
+  firstName: nameField(60),
+  lastName: nameField(60),
+  licenseNumber: licenseNumberField(40),
   department: z.string().min(1, "Select a department"),
-  qualification: z.string().min(1, "Qualification is required"),
+  qualification: shortTextField(100, "Qualification is required"),
   yearsOfExperience: z.string().min(1, "Select experience level"),
-  email: z.string().email("Enter a valid email address"),
-  phone: z.string().min(7, "Enter a valid phone number"),
+  email: emailField,
+  phone: phoneField,
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -42,9 +42,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
   const { facilities } = useFacilities();
   const { profile } = useAuthRole();
 
-  const myFacility =
-    facilities.find((f) => f.profileId === profile?.id) ??
-    facilities.find((f) => f.id === CITY_MEDICAL.facilityId);
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
   const myDepartments = departments.filter((d) => d.facilityId === myFacility?.id);
 
   const {
@@ -92,14 +90,14 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field data-invalid={!!errors.firstName}>
             <FieldLabel htmlFor="firstName">First Name</FieldLabel>
             <FieldContent>
-              <Input id="firstName" {...register("firstName")} aria-invalid={!!errors.firstName} />
+              <Input id="firstName" maxLength={60} {...register("firstName")} aria-invalid={!!errors.firstName} />
               <FieldError errors={[errors.firstName]} />
             </FieldContent>
           </Field>
           <Field data-invalid={!!errors.lastName}>
             <FieldLabel htmlFor="lastName">Last Name</FieldLabel>
             <FieldContent>
-              <Input id="lastName" {...register("lastName")} aria-invalid={!!errors.lastName} />
+              <Input id="lastName" maxLength={60} {...register("lastName")} aria-invalid={!!errors.lastName} />
               <FieldError errors={[errors.lastName]} />
             </FieldContent>
           </Field>
@@ -108,7 +106,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
         <Field data-invalid={!!errors.licenseNumber}>
           <FieldLabel htmlFor="licenseNumber">Medical Registration Number</FieldLabel>
           <FieldContent>
-            <Input id="licenseNumber" {...register("licenseNumber")} aria-invalid={!!errors.licenseNumber} />
+            <Input id="licenseNumber" maxLength={40} {...register("licenseNumber")} aria-invalid={!!errors.licenseNumber} />
             <FieldError errors={[errors.licenseNumber]} />
           </FieldContent>
         </Field>
@@ -149,6 +147,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
               <Input
                 id="qualification"
                 placeholder="e.g. MD, Emergency Medicine"
+                maxLength={100}
                 {...register("qualification")}
                 aria-invalid={!!errors.qualification}
               />
@@ -192,7 +191,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
           <Field data-invalid={!!errors.phone}>
             <FieldLabel htmlFor="phone">Phone</FieldLabel>
             <FieldContent>
-              <Input id="phone" {...register("phone")} aria-invalid={!!errors.phone} />
+              <Input id="phone" type="tel" maxLength={20} {...register("phone")} aria-invalid={!!errors.phone} />
               <FieldError errors={[errors.phone]} />
             </FieldContent>
           </Field>

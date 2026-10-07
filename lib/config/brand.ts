@@ -19,6 +19,18 @@ export const PLATFORM = {
 } as const;
 
 /**
+ * Details the Terms of Service and Privacy Policy need. Fill these in (and
+ * have counsel review both pages) before launch - the bracketed values are
+ * rendered as-is until then.
+ */
+export const LEGAL = {
+  entityName: "[Company legal name]",
+  registeredAddress: "[Registered address]",
+  governingLaw: "[Governing law and courts]",
+  privacyEmail: "privacy@clinicalbridge.com",
+} as const;
+
+/**
  * The tenant/organization currently signed in to the platform (a hospital or
  * clinic). Shown in the topbar org-switcher and on generated documents.
  * In production this would come from the authenticated session, not a constant.

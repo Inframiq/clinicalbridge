@@ -3,6 +3,7 @@
 import { toast } from "sonner";
 import { CalendarDays, CalendarCheck, ClipboardList, CheckCircle2, RefreshCw } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
+import { LicenseExpiryAlert } from "@/components/dashboard/license-expiry-alert";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { ChartCard } from "@/components/dashboard/chart-card";
@@ -11,7 +12,8 @@ import { EmptyState } from "@/components/dashboard/empty-state";
 import { RequestReplacementDialog } from "@/components/forms/request-replacement-dialog";
 import { useShifts } from "@/hooks/use-shifts";
 import { useReplacementRequests } from "@/hooks/use-replacement-requests";
-import { currentWorkingDoctor } from "@/lib/mock-data/doctors";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useAuthRole } from "@/context/auth-provider";
 import { formatDate } from "@/lib/format";
 import { shiftStatusMeta } from "@/lib/status";
 
@@ -25,23 +27,28 @@ const replacementStatusMeta = {
 export default function WorkingDoctorDashboardPage() {
   const { shifts, confirmShiftAttendance } = useShifts();
   const { replacementRequests } = useReplacementRequests();
+  const { doctors } = useDoctors();
+  const { profile } = useAuthRole();
+  const myDoctor = doctors.find((d) => d.profileId === profile?.id);
 
   const myShifts = shifts
-    .filter((s) => s.assignedDoctorId === currentWorkingDoctor.id)
+    .filter((s) => s.assignedDoctorId === myDoctor?.id)
     .sort((a, b) => a.date.localeCompare(b.date));
   const today = myShifts.filter((s) => s.status === "active");
   const upcoming = myShifts.filter((s) => s.status === "confirmed" || s.status === "pending");
   const myRequests = replacementRequests.filter(
-    (r) => r.requestingDoctorId === currentWorkingDoctor.id
+    (r) => r.requestingDoctorId === myDoctor?.id
   );
   const pendingRequests = myRequests.filter((r) => r.status === "pending");
 
   return (
     <div>
       <PageHeader
-        title={`Good morning, Dr. ${currentWorkingDoctor.lastName} 👋`}
+        title={`Good morning${myDoctor ? `, Dr. ${myDoctor.lastName}` : ""} 👋`}
         description="Here's your schedule and any coverage that needs attention."
       />
+
+      <LicenseExpiryAlert licenseExpiry={myDoctor?.licenseExpiry} />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Today's Shifts" value={String(today.length)} icon={CalendarCheck} iconTone="brand" />
@@ -55,7 +62,7 @@ export default function WorkingDoctorDashboardPage() {
         />
         <StatCard
           label="Preferred Department"
-          value={currentWorkingDoctor.specialty}
+          value={myDoctor?.specialty ?? "—"}
           icon={CheckCircle2}
           iconTone="success"
         />
@@ -111,7 +118,7 @@ export default function WorkingDoctorDashboardPage() {
                     )}
                     <RequestReplacementDialog
                       shift={shift}
-                      requestingDoctorId={currentWorkingDoctor.id}
+                      requestingDoctorId={myDoctor!.id}
                       trigger={
                         <Button size="sm" variant="outline">
                           <RefreshCw className="size-4" /> Request Replacement

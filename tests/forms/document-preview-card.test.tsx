@@ -20,7 +20,7 @@ function btn(name: RegExp) {
 }
 
 describe("DocumentPreviewCard", () => {
-  it("renders enabled Approve/Reject buttons and fires the handlers", () => {
+  it("fires onApprove immediately, but only stages a reject until a reason is confirmed", () => {
     const onApprove = vi.fn();
     const onReject = vi.fn();
     render(
@@ -39,9 +39,19 @@ describe("DocumentPreviewCard", () => {
     expect(btn(/reject/i).disabled).toBe(false);
 
     fireEvent.click(btn(/approve/i));
-    fireEvent.click(btn(/reject/i));
     expect(onApprove).toHaveBeenCalledTimes(1);
+
+    // Reject requires a reason first - clicking it opens the reason panel
+    // instead of firing onReject directly.
+    fireEvent.click(btn(/reject/i));
+    expect(onReject).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/reason for rejection/i), {
+      target: { value: "Photo is blurry" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /confirm rejection/i }));
     expect(onReject).toHaveBeenCalledTimes(1);
+    expect(onReject).toHaveBeenCalledWith("Photo is blurry");
   });
 
   it("shows the image preview for an image with a real URL", () => {
@@ -154,8 +164,11 @@ describe("DocumentPreviewCard", () => {
       />
     );
 
-    fireEvent.click(btn(/full screen/i));
+    // onView already fired once on mount - the inline preview defaults open,
+    // so it counts as "accessed" before the full-screen viewer is ever opened.
     expect(onView).toHaveBeenCalledTimes(1);
+    fireEvent.click(btn(/full screen/i));
+    expect(onView).toHaveBeenCalledTimes(2);
 
     // Two Approve buttons now: the inline footer and the full-screen viewer.
     const approveButtons = screen.getAllByRole("button", { name: /approve/i });

@@ -14,6 +14,7 @@ import { Person } from "@/components/dashboard/person";
 import { PostShiftDetailPanel } from "@/components/dashboard/post-shift-detail-panel";
 import { usePayments } from "@/hooks/use-payments";
 import { useShifts } from "@/hooks/use-shifts";
+import { useDoctors } from "@/hooks/use-doctors";
 import { getDoctorById, joinPostShiftRecords, type JoinedPostShiftRecord } from "@/lib/selectors";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { payoutStatusMeta } from "@/lib/status";
@@ -29,8 +30,9 @@ const tabs: { value: string; label: string; statuses?: PayoutStatus[] }[] = [
 ];
 
 export default function AdminPostShiftPage() {
-  const { payments, approveAndProcessPayment, requestPaymentChanges } = usePayments();
+  const { payments, approvePayment, requestPaymentChanges } = usePayments();
   const { shifts } = useShifts();
+  const { doctors } = useDoctors();
   const [tab, setTab] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -64,11 +66,11 @@ export default function AdminPostShiftPage() {
       id: "doctor",
       header: "Doctor",
       accessorFn: (row) => {
-        const doctor = getDoctorById(row.doctorId);
+        const doctor = getDoctorById(doctors, row.doctorId);
         return doctor ? `${doctor.firstName} ${doctor.lastName}` : "";
       },
       cell: ({ row }) => {
-        const doctor = getDoctorById(row.original.doctorId);
+        const doctor = getDoctorById(doctors, row.original.doctorId);
         return doctor ? (
           <Person name={`Dr. ${doctor.firstName} ${doctor.lastName}`} subtitle={doctor.specialty} size="sm" />
         ) : null;
@@ -155,8 +157,9 @@ export default function AdminPostShiftPage() {
             {selected ? (
               <PostShiftDetailPanel
                 record={selected}
+                doctors={doctors}
                 actions={
-                  selected.status === "pending_approval" || selected.status === "approved" ? (
+                  selected.status === "pending_approval" ? (
                     <>
                       <Button
                         variant="outline"
@@ -165,13 +168,14 @@ export default function AdminPostShiftPage() {
                       >
                         Request Changes
                       </Button>
-                      <Button
-                        className="flex-1"
-                        onClick={() => approveAndProcessPayment(selected.id)}
-                      >
-                        Approve & Process Payment
+                      <Button className="flex-1" onClick={() => approvePayment(selected.id)}>
+                        Approve Payment
                       </Button>
                     </>
+                  ) : selected.status === "approved" ? (
+                    <p className="flex-1 text-sm text-muted-foreground">
+                      Approved — awaiting the doctor to withdraw funds.
+                    </p>
                   ) : undefined
                 }
               />

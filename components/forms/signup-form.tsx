@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, Lock, Mail, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -20,15 +21,18 @@ import {
   FieldSeparator,
 } from "@/components/ui/field";
 import { useAuthRole } from "@/context/auth-provider";
-import { ROLE_CONFIG, SELECTABLE_ROLES } from "@/lib/roles";
+import { ROLE_CONFIG, ROLE_ONBOARDING, SELF_SERVE_ROLES, SUPER_ADMIN_EMAIL } from "@/lib/roles";
+import { queuePendingToast } from "@/lib/pending-toast";
 import { cn } from "@/lib/utils";
+import { nameField, emailField, passwordField } from "@/lib/validation";
 import type { UserRole } from "@/types";
 
 const schema = z.object({
-  fullName: z.string().min(1, "Full name is required"),
-  email: z.string().email("Enter a valid email address"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+  fullName: nameField(80),
+  email: emailField,
+  password: passwordField,
+  confirmPassword: z.string(),
+  acceptTerms: z.boolean().refine((v) => v, "You must accept the Terms of Service and Privacy Policy"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -70,26 +74,19 @@ function MicrosoftIcon() {
   );
 }
 
-const roleOnboardingPaths: Record<UserRole, string> = {
-  hospital: "/onboarding/hospital",
-  working_doctor: "/onboarding/working-doctor",
-  locum_tenens: "/onboarding/locum-tenens",
-  super_admin: "/super-admin/dashboard",
-};
-
-/** Resolve a `?role=` param to a role a visitor is actually allowed to pick. */
-function resolveRole(param: string | null): UserRole {
-  return SELECTABLE_ROLES.includes(param as UserRole)
-    ? (param as UserRole)
-    : "hospital";
-}
-
 export function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // `?role=` is user input - never trust it past `SELF_SERVE_ROLES`. In particular
+  // it must never be able to preset `role` to "super_admin", which only an existing
+  // admin may grant, not something a visitor can pick for themselves at signup.
+  function selfServeRole(value: string | null): UserRole | null {
+    return value && (SELF_SERVE_ROLES as string[]).includes(value) ? (value as UserRole) : null;
+  }
+  const defaultRole = selfServeRole(searchParams.get("role")) || "hospital";
 
   const { signUpWithSupabase, signInWithOAuth, refreshProfile } = useAuthRole();
-  const [role, setRole] = useState<UserRole>(resolveRole(searchParams.get("role")));
+  const [role, setRole] = useState<UserRole>(defaultRole);
   const [showPassword, setShowPassword] = useState(false);
 
   // Keep `role` in sync with a `?role=` query change (e.g. a link to this same route with a
@@ -99,16 +96,20 @@ export function SignupForm() {
   const [syncedRoleParam, setSyncedRoleParam] = useState(roleParam);
   if (roleParam !== syncedRoleParam) {
     setSyncedRoleParam(roleParam);
-    setRole(resolveRole(roleParam));
+    const nextRole = selfServeRole(roleParam);
+    if (nextRole) {
+      setRole(nextRole);
+    }
   }
 
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { fullName: "", email: "", password: "", confirmPassword: "" },
+    defaultValues: { fullName: "", email: "", password: "", confirmPassword: "", acceptTerms: false },
   });
 
   async function onSubmit(data: FormValues) {
@@ -141,9 +142,27 @@ export function SignupForm() {
       }
 
       if (user) {
-        await refreshProfile();
-        toast.success("Account created successfully!");
-        router.push(roleOnboardingPaths[role] || "/onboarding");
+        // The designated super-admin email is force-assigned "super_admin"
+        // server-side (see migration 018) regardless of which tile was
+        // picked above. That's already decided by the time signUp resolves,
+        // so redirect off this client-known constant instead of waiting on
+        // an extra profile fetch - `refreshProfile` still runs, just in the
+        // background, since the AuthProvider's own auth-state listener will
+        // sync the session anyway and nothing here needs to block on it.
+        const isSuperAdmin = data.email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+        const targetRole: UserRole = isSuperAdmin ? "super_admin" : role;
+        void refreshProfile();
+
+        // The super-admin target is an AppShell dashboard, which only shows
+        // the toast once it's actually rendered (see app-shell.tsx) - for
+        // every other role this lands on an onboarding wizard instead, so
+        // the toast can just show right away.
+        if (isSuperAdmin) {
+          queuePendingToast("Account created successfully!");
+        } else {
+          toast.success("Account created successfully!");
+        }
+        router.push(ROLE_ONBOARDING[targetRole] || "/onboarding");
         return;
       }
     }
@@ -175,7 +194,7 @@ export function SignupForm() {
           Register as
         </p>
         <div className="grid grid-cols-3 gap-2">
-          {SELECTABLE_ROLES.map((value) => {
+          {SELF_SERVE_ROLES.map((value) => {
             const config = ROLE_CONFIG[value];
             const Icon = config.icon;
             const isActive = role === value;
@@ -229,6 +248,7 @@ export function SignupForm() {
                   type="text"
                   placeholder="Jane Doe"
                   autoComplete="name"
+                  maxLength={80}
                   className="h-11 pl-10"
                   aria-invalid={!!errors.fullName}
                   {...register("fullName")}
@@ -267,6 +287,7 @@ export function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  maxLength={72}
                   className="h-11 px-10"
                   aria-invalid={!!errors.password}
                   {...register("password")}
@@ -294,6 +315,7 @@ export function SignupForm() {
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   autoComplete="new-password"
+                  maxLength={72}
                   className="h-11 px-10"
                   aria-invalid={!!errors.confirmPassword}
                   {...register("confirmPassword")}
@@ -301,6 +323,36 @@ export function SignupForm() {
               </div>
               <FieldError errors={[errors.confirmPassword]} />
             </FieldContent>
+          </Field>
+
+          <Field>
+            <div className="flex items-start gap-2">
+              <Controller
+                control={control}
+                name="acceptTerms"
+                render={({ field }) => (
+                  <Checkbox
+                    id="acceptTerms"
+                    className="mt-0.5"
+                    checked={field.value}
+                    onCheckedChange={(checked) => field.onChange(checked === true)}
+                    aria-invalid={!!errors.acceptTerms}
+                  />
+                )}
+              />
+              <label htmlFor="acceptTerms" className="text-sm text-muted-foreground">
+                I agree to the{" "}
+                <Link href="/terms" target="_blank" className="font-medium text-brand hover:underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" target="_blank" className="font-medium text-brand hover:underline">
+                  Privacy Policy
+                </Link>
+                .
+              </label>
+            </div>
+            <FieldError errors={[errors.acceptTerms]} />
           </Field>
 
           <Button
@@ -332,6 +384,12 @@ export function SignupForm() {
               <MicrosoftIcon /> Microsoft
             </Button>
           </div>
+
+          <FieldDescription className="text-center text-xs">
+            By continuing with Google or Microsoft you agree to the{" "}
+            <Link href="/terms" className="hover:underline">Terms of Service</Link> and{" "}
+            <Link href="/privacy" className="hover:underline">Privacy Policy</Link>.
+          </FieldDescription>
 
           <FieldDescription className="text-center">
             Already have an account?{" "}

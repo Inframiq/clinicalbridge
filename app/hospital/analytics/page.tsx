@@ -21,28 +21,28 @@ import { StatusBadge } from "@/components/dashboard/status-badge";
 import { Person } from "@/components/dashboard/person";
 import { useShifts } from "@/hooks/use-shifts";
 import { useApplications } from "@/hooks/use-applications";
-import { doctors } from "@/lib/mock-data/doctors";
-import { facilities } from "@/lib/mock-data/organizations";
-import {
-  earningsSeries,
-  specialtyBreakdown,
-  dayOfWeekBreakdown,
-  timeOfDayBreakdown,
-  performanceTrends,
-  topFacilities,
-} from "@/lib/mock-data/analytics";
+import { useDoctors } from "@/hooks/use-doctors";
+import { useFacilities } from "@/hooks/use-facilities";
+import { usePayments } from "@/hooks/use-payments";
+import { useRatings } from "@/hooks/use-ratings";
 import { formatDate } from "@/lib/format";
 import { shiftStatusMeta, applicationStatusMeta } from "@/lib/status";
 import { getDoctorName } from "@/lib/selectors";
+import { startHour24, timeSegmentFor, dayOfWeekBuckets } from "@/lib/analytics-time";
 import type { Doctor, Shift, Application } from "@/types";
-import type { Facility } from "@/lib/mock-data/organizations";
+import type { Facility } from "@/lib/supabase/services/facilities";
 
 const specialtyColors = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 const timeOfDayColors = ["var(--chart-1)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
+const TIME_SEGMENTS = ["Morning (6AM-12PM)", "Afternoon (12PM-6PM)", "Evening (6PM-12AM)", "Night (12AM-6AM)"];
 
 export default function AdminAnalyticsPage() {
   const { shifts } = useShifts();
   const { applications } = useApplications();
+  const { doctors } = useDoctors();
+  const { facilities } = useFacilities();
+  const { payments } = usePayments();
+  const { ratings } = useRatings();
 
   const shiftColumns: ColumnDef<Shift>[] = useMemo(
     () => [
@@ -96,7 +96,7 @@ export default function AdminAnalyticsPage() {
       {
         id: "doctor",
         header: "Doctor",
-        accessorFn: (row) => getDoctorName(row.doctorId),
+        accessorFn: (row) => getDoctorName(doctors, row.doctorId),
       },
       {
         accessorKey: "matchScorePct",
@@ -112,8 +112,75 @@ export default function AdminAnalyticsPage() {
         },
       },
     ],
-    []
+    [doctors]
   );
+
+  const earningsSeries = useMemo(() => {
+    const byDate = new Map<string, { earnings: number; hours: number }>();
+    for (const p of payments) {
+      const date = formatDate(p.submittedAt);
+      const entry = byDate.get(date) ?? { earnings: 0, hours: 0 };
+      entry.earnings += p.grossPay;
+      entry.hours += p.hours;
+      byDate.set(date, entry);
+    }
+    return Array.from(byDate.entries())
+      .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+      .map(([date, v]) => ({ date, earnings: v.earnings, hours: v.hours }));
+  }, [payments]);
+
+  const specialtyBreakdown = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const d of doctors) counts.set(d.specialty, (counts.get(d.specialty) ?? 0) + 1);
+    return Array.from(counts.entries()).map(([specialty, count], i) => ({
+      label: specialty,
+      value: count,
+      color: specialtyColors[i % specialtyColors.length],
+    }));
+  }, [doctors]);
+
+  const dayOfWeekBreakdown = useMemo(() => dayOfWeekBuckets(shifts.map((s) => s.date)), [shifts]);
+
+  const timeOfDayBreakdown = useMemo(() => {
+    const counts = [0, 0, 0, 0];
+    for (const s of shifts) counts[timeSegmentFor(startHour24(s.startTime))] += 1;
+    return TIME_SEGMENTS.map((label, i) => ({ label, value: counts[i], color: timeOfDayColors[i] }));
+  }, [shifts]);
+
+  const avgRating =
+    doctors.length === 0 ? 0 : doctors.reduce((sum, d) => sum + d.rating, 0) / doctors.length;
+  const completedShifts = shifts.filter((s) => s.status === "completed").length;
+  const cancelledShifts = shifts.filter((s) => s.status === "cancelled").length;
+  const completionRatePct =
+    completedShifts + cancelledShifts === 0
+      ? 0
+      : (completedShifts / (completedShifts + cancelledShifts)) * 100;
+  const fillRatePct = shifts.length === 0 ? 0 : ((shifts.length - shifts.filter((s) => s.status === "open").length) / shifts.length) * 100;
+
+  const performanceTrends = useMemo(
+    () => [
+      { metric: "Completion Rate", thisMonth: `${completionRatePct.toFixed(1)}%`, lastMonth: "—", changePct: 0 },
+      { metric: "Fill Rate", thisMonth: `${fillRatePct.toFixed(1)}%`, lastMonth: "—", changePct: 0 },
+      { metric: "Average Doctor Rating", thisMonth: avgRating.toFixed(1), lastMonth: "—", changePct: 0 },
+      { metric: "Ratings Submitted", thisMonth: String(ratings.length), lastMonth: "—", changePct: 0 },
+    ],
+    [completionRatePct, fillRatePct, avgRating, ratings.length]
+  );
+
+  const topFacilities = useMemo(() => {
+    const counts = new Map<string, { name: string; count: number }>();
+    for (const s of shifts) {
+      const entry = counts.get(s.facilityId) ?? { name: s.facilityName, count: 0 };
+      entry.count += 1;
+      counts.set(s.facilityId, entry);
+    }
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([id, v]) => ({ id, label: v.name, value: `${v.count} shifts` }));
+  }, [shifts]);
+
+  const verifiedDoctorCount = doctors.filter((d) => d.verified).length;
 
   return (
     <div>
@@ -138,57 +205,47 @@ export default function AdminAnalyticsPage() {
               { label: "Providers", value: String(doctors.length), icon: Users },
               { label: "Facilities", value: String(facilities.length), icon: Building2 },
               { label: "Applications", value: String(applications.length), icon: ClipboardList },
-              { label: "Avg. Rating", value: "4.8", icon: Star },
-              { label: "Fill Rate", value: "94.2%", icon: BarChart3 },
+              { label: "Avg. Rating", value: avgRating.toFixed(1), icon: Star },
+              { label: "Fill Rate", value: `${fillRatePct.toFixed(1)}%`, icon: BarChart3 },
             ]}
             earningsSeries={earningsSeries}
             earningsLabel="Platform Volume"
-            specialtyBreakdown={specialtyBreakdown.map((s, i) => ({
-              label: s.specialty,
-              value: s.count,
-              color: specialtyColors[i % specialtyColors.length],
-            }))}
+            specialtyBreakdown={specialtyBreakdown}
             dayOfWeekBreakdown={dayOfWeekBreakdown}
-            timeOfDayBreakdown={timeOfDayBreakdown.map((t, i) => ({
-              label: t.segment,
-              value: t.shifts,
-              color: timeOfDayColors[i % timeOfDayColors.length],
-            }))}
+            timeOfDayBreakdown={timeOfDayBreakdown}
             performanceTrends={performanceTrends}
             topListTitle="Top Facilities"
-            topList={topFacilities.map((f) => ({
-              id: f.id,
-              label: f.name,
-              value: `${f.shiftsWorked} shifts`,
-            }))}
+            topList={topFacilities}
             insights={[
               {
                 icon: Lightbulb,
-                title: "Key Insight",
-                description: "Fill rate is up 4.2% compared to last month.",
-                linkLabel: "View Report",
-                href: "#",
+                title: "Fill Rate",
+                description: `${fillRatePct.toFixed(1)}% of posted shifts have been filled.`,
+                linkLabel: "View Shifts",
+                href: "/hospital/active-shifts",
               },
               {
                 icon: Award,
                 title: "Top Facility",
-                description: "City Medical Center has the highest shift volume.",
+                description: topFacilities[0]
+                  ? `${topFacilities[0].label} has the highest shift volume.`
+                  : "No shift volume yet.",
                 linkLabel: "View Facilities",
                 href: "#",
               },
               {
                 icon: ShieldCheck,
                 title: "Compliance",
-                description: "100% of active doctors have verified credentials.",
+                description: `${verifiedDoctorCount} of ${doctors.length} doctors have verified credentials.`,
                 linkLabel: "View Providers",
-                href: "#",
+                href: "/hospital/doctors",
               },
               {
                 icon: BarChart3,
-                title: "Report Center",
-                description: "Access detailed reports and export data for analysis.",
-                linkLabel: "Go to Report Center",
-                href: "#",
+                title: "Applications",
+                description: `${applications.length} applications received across all shifts.`,
+                linkLabel: "View Applications",
+                href: "/hospital/applications",
               },
             ]}
           />

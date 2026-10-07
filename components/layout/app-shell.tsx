@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useLocalStorageState } from "@/hooks/use-local-storage-state";
@@ -10,6 +11,7 @@ import { useAuthRole } from "@/context/auth-provider";
 import type { UserProfile } from "@/context/auth-provider";
 import { navItemsByRole } from "@/lib/nav-config";
 import { ROLE_HOME } from "@/lib/roles";
+import { consumePendingToast } from "@/lib/pending-toast";
 import type { UserRole } from "@/types";
 
 interface AppShellProps {
@@ -25,12 +27,6 @@ interface AppShellProps {
   children: React.ReactNode;
 }
 
-// DEV-ONLY bypass: skips the login screen entirely so any /<role>/* section
-// can be opened directly while building/testing. `NODE_ENV` is inlined at
-// build time, so this branch (and the login/role-check it replaces) is
-// dead-code-eliminated from production bundles — never ships live.
-const DEV_BYPASS = process.env.NODE_ENV !== "production";
-
 export function AppShell({
   rootLabel,
   requiredRole,
@@ -38,7 +34,7 @@ export function AppShell({
   children,
 }: AppShellProps) {
   const router = useRouter();
-  const { role, login } = useAuthRole();
+  const { role } = useAuthRole();
   const [collapsed, setCollapsed] = useLocalStorageState("lt-sidebar-collapsed", false);
 
   // `NavItem.icon` is a lucide component reference and can't cross the
@@ -53,29 +49,33 @@ export function AppShell({
   // a real, already-authenticated user back to /login on a hard navigation.
   const mounted = useHasMounted();
 
+  // `initialProfile` is a plain prop with the same value on the server render
+  // and the client's first pass, so short-circuiting on it keeps hydration
+  // identical while skipping the blank shell for a server-verified session.
+  const isAuthorized = initialProfile?.role === requiredRole || (mounted && role === requiredRole);
+
   useEffect(() => {
     if (!mounted) return;
     if (role === requiredRole || initialProfile?.role === requiredRole) return;
-
-    if (DEV_BYPASS) {
-      // Auto sign-in as whichever role the current section needs, instead of
-      // redirecting away — lets you deep-link into any admin/doctor page
-      // during development without clicking through auth every time.
-      login(requiredRole);
-      return;
-    }
 
     if (role !== null) {
       router.replace(ROLE_HOME[role]);
     } else {
       router.replace("/login");
     }
-  }, [mounted, role, requiredRole, router, login, initialProfile]);
+  }, [mounted, role, requiredRole, router, initialProfile]);
 
-  // `initialProfile` is a plain prop with the same value on the server render
-  // and the client's first pass, so short-circuiting on it keeps hydration
-  // identical while skipping the blank shell for a server-verified session.
-  if (initialProfile?.role !== requiredRole && (!mounted || role !== requiredRole)) {
+  // Fires once this dashboard is actually the thing on screen - not when
+  // login/signup called router.push, which only starts the navigation. A
+  // toast queued by queuePendingToast (e.g. "Signed in successfully") sits
+  // in sessionStorage until this runs, so it never appears mid-redirect.
+  useEffect(() => {
+    if (!isAuthorized) return;
+    const pending = consumePendingToast();
+    if (pending) toast[pending.type](pending.message);
+  }, [isAuthorized]);
+
+  if (!isAuthorized) {
     return <div className="flex h-dvh items-center justify-center bg-background" />;
   }
 

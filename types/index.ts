@@ -1,4 +1,4 @@
-import type { UploadedFileMetadata } from "@/lib/supabase/storage";
+import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
 
 export type ShiftStatus =
   | "open"
@@ -12,30 +12,30 @@ export type ExperienceLevel = "Entry Level" | "Mid Level+" | "Senior" | "Expert"
 
 export type EmploymentType = "Independent / Locum" | "W2 Contract" | "Full-Time";
 
-export interface GeoLocation {
+export type GeoLocation = {
   address: string;
   city: string;
   state: string;
   lat: number;
   lng: number;
-}
+};
 
 export type DoctorKind = "working" | "locum_tenens";
 
-export interface DoctorVerification {
+export type DoctorVerification = {
   medicalCouncil: boolean;
   degree: boolean;
   identity: boolean;
   hospitalApproval: boolean;
-}
+};
 
-export interface HospitalVerification {
+export type HospitalVerification = {
   governmentRegistration: boolean;
   medicalLicense: boolean;
   taxRegistration: boolean;
   accreditation: boolean;
   authorizedSignatory: boolean;
-}
+};
 
 export interface ReplacementPreferences {
   preferredTravelDistanceMiles?: number;
@@ -74,6 +74,10 @@ export interface Doctor {
   profileId?: string;
   /** Account-level registration status from `profiles.verification_status` (e.g. "Submitted", "Approved", "Rejected"). */
   registrationStatus?: string;
+  /** Super admin's review of the Basic Info section, independent of the per-document statuses. */
+  basicInfoStatus: DocumentReviewStatus;
+  basicInfoReviewedAt?: string;
+  basicInfoRejectionReason?: string;
 }
 
 export type ShiftType =
@@ -184,6 +188,8 @@ export interface AppNotification {
   timestamp: string;
   read: boolean;
   type: "info" | "success" | "warning" | "danger";
+  /** Notification-preference key (e.g. "shift-invites") used to decide whether to email it. */
+  topic?: string;
 }
 
 export interface Patient {
@@ -290,4 +296,21 @@ export interface AttendanceRecord {
   verifiedByProfileId?: string;
   verifiedAt?: string;
   status: AttendanceStatus;
+}
+
+export interface MessageThread {
+  id: string;
+  participantOne: string;
+  participantTwo: string;
+  lastMessageAt: string;
+  createdAt: string;
+}
+
+export interface Message {
+  id: string;
+  threadId: string;
+  senderId: string;
+  body: string;
+  read: boolean;
+  createdAt: string;
 }

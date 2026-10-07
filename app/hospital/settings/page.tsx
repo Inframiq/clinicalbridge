@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Building2, Mail, MapPin, Phone } from "lucide-react";
+import { AccountDataCard } from "@/components/settings/account-data-card";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -11,7 +12,19 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Field, FieldContent, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { ACTIVE_ORGANIZATION } from "@/lib/config/brand";
+import { useAuthRole } from "@/context/auth-provider";
+import { useFacilities } from "@/hooks/use-facilities";
+import { useNotificationPreferences } from "@/hooks/use-notification-preferences";
+import { emailField, optionalPhoneField, shortTextField } from "@/lib/validation";
+import { z } from "zod";
+
+const schema = z.object({
+  name: shortTextField(150),
+  address: z.string().trim().max(200, "Must be 200 characters or fewer").optional().or(z.literal("")),
+  city: shortTextField(80),
+  phone: optionalPhoneField,
+  email: emailField,
+});
 
 const notificationPrefs = [
   { id: "new-applications", label: "New shift applications", description: "Get notified when a doctor applies to a shift." },
@@ -21,12 +34,52 @@ const notificationPrefs = [
 ];
 
 export default function AdminSettingsPage() {
-  const [prefs, setPrefs] = useState<Record<string, boolean>>({
+  const { profile } = useAuthRole();
+  const { facilities, updateFacilityProfile } = useFacilities();
+  const myFacility = facilities.find((f) => f.profileId === profile?.id);
+
+  const [form, setForm] = useState({ name: "", address: "", city: "", phone: "", email: "" });
+  const [loadedFacilityId, setLoadedFacilityId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const {
+    prefs,
+    setPref,
+    save: savePrefs,
+    saving: savingPrefs,
+  } = useNotificationPreferences({
     "new-applications": true,
     "shift-status": true,
     payments: true,
     "code-red": true,
   });
+
+  // Adjust state during render (not in an effect) the first time each
+  // facility's data becomes available, so the form starts populated with
+  // real values without an extra render pass or a flash of empty inputs.
+  if (myFacility && myFacility.id !== loadedFacilityId) {
+    setLoadedFacilityId(myFacility.id);
+    setForm({
+      name: myFacility.name,
+      address: myFacility.address ?? "",
+      city: myFacility.city,
+      phone: myFacility.phone,
+      email: myFacility.email,
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!myFacility) return;
+    const result = schema.safeParse(form);
+    if (!result.success) {
+      toast.error(result.error.issues[0]?.message ?? "Check the highlighted fields");
+      return;
+    }
+    setSaving(true);
+    await updateFacilityProfile(myFacility.id, result.data);
+    setSaving(false);
+    toast.success("Settings saved");
+  }
 
   return (
     <div>
@@ -36,6 +89,7 @@ export default function AdminSettingsPage() {
         <TabsList>
           <TabsTrigger value="organization">Organization Profile</TabsTrigger>
           <TabsTrigger value="notifications">Notifications</TabsTrigger>
+          <TabsTrigger value="privacy">Privacy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="organization" className="mt-6 max-w-2xl">
@@ -47,56 +101,85 @@ export default function AdminSettingsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  toast.success("Settings saved");
-                }}
-              >
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="org-name">Organization Name</FieldLabel>
-                    <FieldContent>
-                      <div className="relative">
-                        <Building2 className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input id="org-name" defaultValue={ACTIVE_ORGANIZATION.name} className="pl-9" />
-                      </div>
-                    </FieldContent>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="org-address">Address</FieldLabel>
-                    <FieldContent>
-                      <div className="relative">
-                        <MapPin className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input id="org-address" defaultValue={ACTIVE_ORGANIZATION.address} className="pl-9" />
-                      </div>
-                    </FieldContent>
-                  </Field>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {!myFacility ? (
+                <p className="text-sm text-muted-foreground">
+                  No facility record found for your account yet.
+                </p>
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <FieldGroup>
                     <Field>
-                      <FieldLabel htmlFor="org-phone">Phone</FieldLabel>
+                      <FieldLabel htmlFor="org-name">Organization Name</FieldLabel>
                       <FieldContent>
                         <div className="relative">
-                          <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input id="org-phone" defaultValue={ACTIVE_ORGANIZATION.phone} className="pl-9" />
+                          <Building2 className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            id="org-name"
+                            value={form.name}
+                            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                            maxLength={150}
+                            className="pl-9"
+                          />
                         </div>
                       </FieldContent>
                     </Field>
                     <Field>
-                      <FieldLabel htmlFor="org-email">Email</FieldLabel>
+                      <FieldLabel htmlFor="org-address">Address</FieldLabel>
                       <FieldContent>
                         <div className="relative">
-                          <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input id="org-email" defaultValue={ACTIVE_ORGANIZATION.email} className="pl-9" />
+                          <MapPin className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            id="org-address"
+                            value={form.address}
+                            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+                            maxLength={200}
+                            className="pl-9"
+                          />
                         </div>
                       </FieldContent>
                     </Field>
-                  </div>
-                  <div className="flex justify-end">
-                    <Button type="submit">Save Changes</Button>
-                  </div>
-                </FieldGroup>
-              </form>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <Field>
+                        <FieldLabel htmlFor="org-phone">Phone</FieldLabel>
+                        <FieldContent>
+                          <div className="relative">
+                            <Phone className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              id="org-phone"
+                              type="tel"
+                              value={form.phone}
+                              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                              maxLength={20}
+                              className="pl-9"
+                            />
+                          </div>
+                        </FieldContent>
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="org-email">Email</FieldLabel>
+                        <FieldContent>
+                          <div className="relative">
+                            <Mail className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                              id="org-email"
+                              type="email"
+                              value={form.email}
+                              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                              maxLength={254}
+                              className="pl-9"
+                            />
+                          </div>
+                        </FieldContent>
+                      </Field>
+                    </div>
+                    <div className="flex justify-end">
+                      <Button type="submit" disabled={saving}>
+                        {saving ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
+                  </FieldGroup>
+                </form>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -117,19 +200,23 @@ export default function AdminSettingsPage() {
                     </div>
                     <Switch
                       checked={prefs[pref.id]}
-                      onCheckedChange={(checked) =>
-                        setPrefs((p) => ({ ...p, [pref.id]: checked }))
-                      }
+                      onCheckedChange={(checked) => setPref(pref.id, checked)}
                     />
                   </div>
                 ))}
               </div>
               <Separator className="my-4" />
               <div className="flex justify-end">
-                <Button onClick={() => toast.success("Preferences saved")}>Save Preferences</Button>
+                <Button onClick={savePrefs} disabled={savingPrefs}>
+                  {savingPrefs ? "Saving..." : "Save Preferences"}
+                </Button>
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="privacy" className="mt-6 max-w-2xl">
+          <AccountDataCard />
         </TabsContent>
       </Tabs>
     </div>

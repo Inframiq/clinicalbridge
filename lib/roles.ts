@@ -58,17 +58,32 @@ export const ROLE_ORDER: UserRole[] = [
 ];
 
 /**
- * Roles a visitor may pick on the public login / signup screens.
- * `super_admin` is deliberately excluded: platform admins are provisioned
- * out-of-band and sign in with just an email + password (the login form
- * detects the role from their profile and routes them to the admin console).
+ * Roles a visitor may pick for themselves at signup. `super_admin` is
+ * deliberately excluded — it must only ever be granted by an existing admin,
+ * never self-selected. Use this (not `ROLE_ORDER`) anywhere a role comes from
+ * user input (a signup form, a `?role=` query param) rather than from an
+ * already-authenticated profile.
  */
-export const SELECTABLE_ROLES: UserRole[] = [
-  "hospital",
-  "working_doctor",
-  "locum_tenens",
-];
+export const SELF_SERVE_ROLES: UserRole[] = ROLE_ORDER.filter((r) => r !== "super_admin");
+
+/**
+ * The one email the `handle_new_user` DB trigger (migration 018) force-
+ * assigns `super_admin` to, regardless of which self-serve role was
+ * requested. Mirrored here only so the client can make an immediate,
+ * network-free redirect decision right after signup - the actual role
+ * assignment is enforced server-side and this constant has no authority
+ * of its own.
+ */
+export const SUPER_ADMIN_EMAIL = "chitrothusanjita@gmail.com";
 
 export const ROLE_HOME: Record<UserRole, string> = Object.fromEntries(
   ROLE_ORDER.map((role) => [role, ROLE_CONFIG[role].homeHref])
 ) as Record<UserRole, string>;
+
+/** Where an account of this role goes to complete/resume onboarding. */
+export const ROLE_ONBOARDING: Record<UserRole, string> = {
+  hospital: "/onboarding/hospital",
+  working_doctor: "/onboarding/working-doctor",
+  locum_tenens: "/onboarding/locum-tenens",
+  super_admin: "/super-admin/dashboard",
+};
