@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { HospitalVerification } from "@/types";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
-import type { TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
+import { asJsonObject, type Tables, type TablesUpdate, type TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
@@ -38,9 +38,13 @@ const EMPTY_VERIFICATION: HospitalVerification = {
   authorizedSignatory: false,
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapFacilityRow(item: Record<string, any>): Facility {
-  const verification: HospitalVerification = { ...EMPTY_VERIFICATION, ...(item.verification_status || {}) };
+/** A facilities row, optionally joined with its profile (realtime payloads carry no join). */
+export type FacilityRow = Tables<"facilities"> & {
+  profiles?: Pick<Tables<"profiles">, "verification_status"> | null;
+};
+
+export function mapFacilityRow(item: FacilityRow): Facility {
+  const verification: HospitalVerification = { ...EMPTY_VERIFICATION, ...asJsonObject(item.verification_status) };
   const allVerified = Object.values(verification).every(Boolean);
   return {
     id: item.id,
@@ -55,7 +59,7 @@ export function mapFacilityRow(item: Record<string, any>): Facility {
     phone: item.phone ?? "",
     verification,
     status: allVerified ? "verified" : "pending",
-    uploadedDocuments: item.uploaded_documents ?? {},
+    uploadedDocuments: (item.uploaded_documents as Record<string, UploadedFileMetadata> | null) ?? {},
     profileId: item.profile_id ?? undefined,
     registrationStatus: item.profiles?.verification_status ?? undefined,
     basicInfoStatus: (item.basic_info_status ?? "pending") as DocumentReviewStatus,

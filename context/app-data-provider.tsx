@@ -80,6 +80,8 @@ import {
   verifyAttendanceInSupabase,
 } from "@/lib/supabase/services/attendance";
 import { reportSupabase } from "@/lib/supabase/log";
+import type { Tables } from "@/lib/supabase/types";
+import type { RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 /**
  * Applies one realtime postgres_changes event to a local state slice: upserts
@@ -87,13 +89,13 @@ import { reportSupabase } from "@/lib/supabase/log";
  * payloads only carry the primary key under the default replica identity, so
  * `payload.old` is read for `id` only - never mapped as a full row.
  */
-function applyRealtimeChange<T extends { id: string }>(
+function applyRealtimeChange<T extends { id: string }, R extends { id: string }>(
   setter: (updater: T[] | ((prev: T[]) => T[])) => void,
-  payload: { eventType: string; new: Record<string, unknown>; old: Record<string, unknown> },
-  mapRow: (row: Record<string, unknown>) => T
+  payload: RealtimePostgresChangesPayload<R>,
+  mapRow: (row: R) => T
 ) {
   if (payload.eventType === "DELETE") {
-    const oldId = (payload.old as { id?: string })?.id;
+    const oldId = payload.old?.id;
     if (!oldId) return;
     setter((prev) => prev.filter((item) => item.id !== oldId));
     return;
@@ -413,38 +415,38 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
     const supabase = createClient();
     const channel = supabase
       .channel("app-data-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "doctors" }, (payload) =>
+      .on<Tables<"doctors">>("postgres_changes", { event: "*", schema: "public", table: "doctors" }, (payload) =>
         applyRealtimeChange(setDoctors, payload, mapDoctorRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "facilities" }, (payload) =>
+      .on<Tables<"facilities">>("postgres_changes", { event: "*", schema: "public", table: "facilities" }, (payload) =>
         applyRealtimeChange(setFacilities, payload, mapFacilityRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "shifts" }, (payload) =>
+      .on<Tables<"shifts">>("postgres_changes", { event: "*", schema: "public", table: "shifts" }, (payload) =>
         applyRealtimeChange(setShifts, payload, mapShiftRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "applications" }, (payload) =>
+      .on<Tables<"applications">>("postgres_changes", { event: "*", schema: "public", table: "applications" }, (payload) =>
         applyRealtimeChange(setApplications, payload, mapApplicationRow)
       )
-      .on(
+      .on<Tables<"replacement_requests">>(
         "postgres_changes",
         { event: "*", schema: "public", table: "replacement_requests" },
         (payload) => applyRealtimeChange(setReplacementRequests, payload, mapReplacementRequestRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "payouts" }, (payload) =>
+      .on<Tables<"payouts">>("postgres_changes", { event: "*", schema: "public", table: "payouts" }, (payload) =>
         applyRealtimeChange(setPayments, payload, mapPayoutRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, (payload) =>
+      .on<Tables<"ratings">>("postgres_changes", { event: "*", schema: "public", table: "ratings" }, (payload) =>
         applyRealtimeChange(setRatings, payload, mapRatingRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "departments" }, (payload) =>
+      .on<Tables<"departments">>("postgres_changes", { event: "*", schema: "public", table: "departments" }, (payload) =>
         applyRealtimeChange(setDepartments, payload, mapDepartmentRow)
       )
-      .on(
+      .on<Tables<"attendance_records">>(
         "postgres_changes",
         { event: "*", schema: "public", table: "attendance_records" },
         (payload) => applyRealtimeChange(setAttendanceRecords, payload, mapAttendanceRow)
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) =>
+      .on<Tables<"notifications">>("postgres_changes", { event: "*", schema: "public", table: "notifications" }, (payload) =>
         applyRealtimeChange(setNotifications, payload, mapNotificationRow)
       )
       .subscribe((status, err) => {
@@ -507,7 +509,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapShiftRow(data as Record<string, unknown>);
+        const persisted = mapShiftRow(data);
         setShifts((prev) => prev.map((s) => (s.id === newShift.id ? persisted : s)));
       }
       return newShift;
@@ -569,7 +571,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (data) {
-        const persisted = mapApplicationRow(data as Record<string, unknown>);
+        const persisted = mapApplicationRow(data);
         setApplications((prev) => prev.map((a) => (a.id === newApp.id ? persisted : a)));
       }
     },
@@ -1069,7 +1071,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapReplacementRequestRow(data as Record<string, unknown>);
+        const persisted = mapReplacementRequestRow(data);
         setReplacementRequests((prev) =>
           prev.map((r) => (r.id === newRequest.id ? persisted : r))
         );
@@ -1245,7 +1247,7 @@ export function AppDataProvider({ children }: { children: React.ReactNode }) {
         throw new Error(error);
       }
       if (data) {
-        const persisted = mapRatingRow(data as Record<string, unknown>);
+        const persisted = mapRatingRow(data);
         setRatings((prev) => prev.map((r) => (r.id === newRating.id ? persisted : r)));
       }
       return newRating;

@@ -1,36 +1,51 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import type { Shift, ReplacementRequest, Application } from "@/types";
-import type { TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
+import type { Shift, ReplacementRequest, Application, ApplicationStatus, PreferredReplacementType } from "@/types";
+import type { Tables, TablesUpdate, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapShiftRow } from "../mappers";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapReplacementRequestRow(item: Record<string, any>): ReplacementRequest {
+export function mapReplacementRequestRow(item: Tables<"replacement_requests">): ReplacementRequest {
   return {
     id: item.id,
     shiftId: item.shift_id,
     requestingDoctorId: item.requesting_doctor_id,
     reason: item.reason,
-    preferredReplacementType: item.preferred_replacement_type,
+    preferredReplacementType: item.preferred_replacement_type as PreferredReplacementType,
     hourlyCompensation: Number(item.hourly_compensation),
-    notes: item.notes,
-    status: item.status,
-    requestedAt: item.requested_at,
-    reviewedAt: item.reviewed_at,
+    notes: item.notes ?? undefined,
+    status: item.status ?? "pending",
+    requestedAt: item.requested_at ?? "",
+    reviewedAt: item.reviewed_at ?? undefined,
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapApplicationRow(item: Record<string, any>): Application {
+/**
+ * The DB enum also has applied, shortlisted and cancelled (applied is the column
+ * default); the app only models four statuses, so fold the rest into the nearest one.
+ */
+function toApplicationStatus(status: Tables<"applications">["status"]): ApplicationStatus {
+  switch (status) {
+    case "accepted":
+    case "rejected":
+    case "withdrawn":
+      return status;
+    case "cancelled":
+      return "withdrawn";
+    default:
+      return "in_review";
+  }
+}
+
+export function mapApplicationRow(item: Tables<"applications">): Application {
   return {
     id: item.id,
     shiftId: item.shift_id,
     doctorId: item.doctor_id,
-    status: item.status,
-    appliedAt: item.applied_at,
-    matchScorePct: item.match_score_pct,
+    status: toApplicationStatus(item.status),
+    appliedAt: item.applied_at ?? "",
+    matchScorePct: item.match_score_pct ?? 85,
   };
 }
 
@@ -106,7 +121,7 @@ export async function getApplications(
 export async function createShiftInSupabase(
   shift: Shift,
   client?: TypedSupabaseClient
-): Promise<{ data: unknown; error: string | null }> {
+): Promise<{ data: Tables<"shifts"> | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(shift.id) || !isUuid(shift.facilityId)) {
     if (process.env.NODE_ENV !== "production")
@@ -217,7 +232,7 @@ export async function updateShiftAssignmentInSupabase(
 export async function createReplacementRequestInSupabase(
   req: ReplacementRequest,
   client?: TypedSupabaseClient
-): Promise<{ data: unknown; error: string | null }> {
+): Promise<{ data: Tables<"replacement_requests"> | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(req.id) || !isUuid(req.shiftId) || !isUuid(req.requestingDoctorId)) {
     if (process.env.NODE_ENV !== "production")
@@ -319,7 +334,7 @@ export async function modifyReplacementRequestInSupabase(
 export async function createApplicationInSupabase(
   app: Application,
   client?: TypedSupabaseClient
-): Promise<{ data: unknown; error: string | null }> {
+): Promise<{ data: Tables<"applications"> | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (!isUuid(app.id) || !isUuid(app.shiftId) || !isUuid(app.doctorId)) {
     if (process.env.NODE_ENV !== "production")

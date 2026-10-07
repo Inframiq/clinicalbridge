@@ -1,14 +1,18 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import type { Doctor, DoctorVerification } from "@/types";
+import type { Doctor, DoctorVerification, EmploymentType } from "@/types";
 import type { DocumentReviewStatus, UploadedFileMetadata } from "@/lib/supabase/storage";
-import { asJsonObject, type TablesUpdate, type TypedSupabaseClient } from "@/lib/supabase/types";
+import { asJsonObject, type Tables, type TablesUpdate, type TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapDoctorRow(item: Record<string, any>): Doctor {
-  const vd = item.verification_details || {};
+/** A doctors row, optionally joined with its profile (realtime payloads carry no join). */
+export type DoctorRow = Tables<"doctors"> & {
+  profiles?: Pick<Tables<"profiles">, "email" | "phone" | "verification_status"> | null;
+};
+
+export function mapDoctorRow(item: DoctorRow): Doctor {
+  const vd = asJsonObject(item.verification_details);
   const verification: DoctorVerification = {
     medicalCouncil: Boolean(vd.medicalCouncil),
     degree: Boolean(vd.degree),
@@ -28,7 +32,7 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
     licenseExpiry: item.license_expiry ?? "",
     npiNumber: item.npi_number ?? "",
     yearsOfExperience: item.years_of_experience ?? "",
-    employmentType: item.employment_type ?? "Independent / Locum",
+    employmentType: (item.employment_type ?? "Independent / Locum") as EmploymentType,
     preferredLocations: item.preferred_locations ?? [],
     verified,
     email: item.profiles?.email ?? "",
@@ -36,7 +40,7 @@ export function mapDoctorRow(item: Record<string, any>): Doctor {
     status: verified ? "active" : "onboarding",
     doctorKind: item.doctor_kind,
     verification,
-    uploadedDocuments: item.uploaded_documents ?? {},
+    uploadedDocuments: (item.uploaded_documents as Record<string, UploadedFileMetadata> | null) ?? {},
     profileId: item.profile_id ?? undefined,
     registrationStatus: item.profiles?.verification_status ?? undefined,
     basicInfoStatus: (item.basic_info_status ?? "pending") as DocumentReviewStatus,

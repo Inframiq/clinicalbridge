@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Rating } from "@/types";
-import type { TypedSupabaseClient } from "@/lib/supabase/types";
+import type { Tables, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 import { mapRatingRow } from "../mappers";
@@ -32,7 +32,7 @@ export async function getRatings(
 export async function createRatingInSupabase(
   rating: Rating,
   client?: TypedSupabaseClient
-): Promise<{ data: unknown; error: string | null }> {
+): Promise<{ data: Tables<"ratings"> | null; error: string | null }> {
   if (!isSupabaseConfigured) return { data: null, error: null };
   if (
     !isUuid(rating.id) ||

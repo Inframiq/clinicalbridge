@@ -1,12 +1,11 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Department } from "@/types";
-import type { TypedSupabaseClient } from "@/lib/supabase/types";
+import type { Tables, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapDepartmentRow(item: Record<string, any>): Department {
+export function mapDepartmentRow(item: Tables<"departments">): Department {
   return {
     id: item.id,
     facilityId: item.facility_id,

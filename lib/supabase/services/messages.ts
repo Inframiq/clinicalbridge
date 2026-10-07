@@ -1,30 +1,28 @@
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { Message, MessageThread } from "@/types";
-import type { TypedSupabaseClient } from "@/lib/supabase/types";
+import type { Tables, TypedSupabaseClient } from "@/lib/supabase/types";
 import { isUuid } from "./utils";
 import { reportSupabase, describeSupabaseError } from "../log";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapThreadRow(item: Record<string, any>): MessageThread {
+function mapThreadRow(item: Tables<"message_threads">): MessageThread {
   return {
     id: item.id,
     participantOne: item.participant_one,
     participantTwo: item.participant_two,
-    lastMessageAt: item.last_message_at,
-    createdAt: item.created_at,
+    lastMessageAt: item.last_message_at ?? "",
+    createdAt: item.created_at ?? "",
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapMessageRow(item: Record<string, any>): Message {
+function mapMessageRow(item: Tables<"messages">): Message {
   return {
     id: item.id,
     threadId: item.thread_id,
     senderId: item.sender_id,
     body: item.body,
     read: Boolean(item.read),
-    createdAt: item.created_at,
+    createdAt: item.created_at ?? "",
   };
 }
 

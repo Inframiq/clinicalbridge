@@ -1,39 +1,51 @@
 import { formatDistance } from "date-fns";
-import type { Shift, PostShiftRecord, Rating, AppNotification } from "@/types";
+import type {
+  Shift,
+  ShiftType,
+  ExperienceLevel,
+  GeoLocation,
+  PostShiftRecord,
+  Rating,
+  RatingDirection,
+  AppNotification,
+} from "@/types";
+import type { Tables } from "./types";
 
 export { mapDoctorRow } from "./services/doctors";
 export { mapFacilityRow } from "./services/facilities";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapShiftRow(item: Record<string, any>): Shift {
+// Fallbacks below mirror the column defaults in supabase/migrations/001_initial_schema.sql.
+// Free-text columns (shift_type, experience_level, direction, type) are trusted to hold
+// the values the app writes, so they are narrowed with a cast.
+
+export function mapShiftRow(item: Tables<"shifts">): Shift {
   return {
     id: item.id,
     title: item.title,
     department: item.department_name,
     facilityName: item.facility_name,
     facilityId: item.facility_id,
-    location: item.location || { address: "", city: "", state: "", lat: 0, lng: 0 },
+    location: (item.location as GeoLocation | null) || { address: "", city: "", state: "", lat: 0, lng: 0 },
     date: item.date,
     startTime: item.start_time,
     endTime: item.end_time,
-    shiftType: item.shift_type,
-    subSpecialty: item.sub_specialty,
+    shiftType: item.shift_type as ShiftType,
+    subSpecialty: item.sub_specialty ?? undefined,
     hourlyRate: Number(item.hourly_rate),
-    doctorsNeeded: item.doctors_needed,
-    experienceLevel: item.experience_level,
+    doctorsNeeded: item.doctors_needed ?? 1,
+    experienceLevel: (item.experience_level ?? "Mid Level+") as ExperienceLevel,
     description: item.description || "",
-    status: item.status,
+    status: item.status ?? "open",
     codeRed: Boolean(item.code_red),
-    assignedDoctorId: item.assigned_doctor_id,
-    requiredQualification: item.required_qualification,
-    supervisorName: item.supervisor_name,
-    emergencyContact: item.emergency_contact,
-    applicationDeadline: item.application_deadline,
+    assignedDoctorId: item.assigned_doctor_id ?? undefined,
+    requiredQualification: item.required_qualification ?? undefined,
+    supervisorName: item.supervisor_name ?? undefined,
+    emergencyContact: item.emergency_contact ?? undefined,
+    applicationDeadline: item.application_deadline ?? undefined,
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapPayoutRow(item: Record<string, any>): PostShiftRecord {
+export function mapPayoutRow(item: Tables<"payouts">): PostShiftRecord {
   return {
     id: item.id,
     shiftId: item.shift_id,
@@ -43,8 +55,8 @@ export function mapPayoutRow(item: Record<string, any>): PostShiftRecord {
     grossPay: Number(item.gross_pay),
     platformFeePct: Number(item.platform_fee_pct),
     netPayout: Number(item.net_payout),
-    status: item.status,
-    submittedAt: item.submitted_at,
+    status: item.status ?? "pending_approval",
+    submittedAt: item.submitted_at ?? "",
     approvedAt: item.approved_at ?? undefined,
     paidAt: item.paid_at ?? undefined,
     hasTimesheet: Boolean(item.has_timesheet),
@@ -52,29 +64,28 @@ export function mapPayoutRow(item: Record<string, any>): PostShiftRecord {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapRatingRow(item: Record<string, any>): Rating {
+export function mapRatingRow(item: Tables<"ratings">): Rating {
   return {
     id: item.id,
     shiftId: item.shift_id,
-    direction: item.direction,
+    direction: item.direction as RatingDirection,
     doctorId: item.doctor_id,
     facilityId: item.facility_id,
-    categories: item.categories || {},
+    categories: (item.categories as Record<string, number> | null) || {},
     overallScore: Number(item.overall_score),
     comment: item.comment ?? undefined,
-    createdAt: item.created_at,
+    createdAt: item.created_at ?? "",
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function mapNotificationRow(item: Record<string, any>, now: Date = new Date()): AppNotification {
+export function mapNotificationRow(item: Tables<"notifications">, now: Date = new Date()): AppNotification {
   return {
     id: item.id,
     title: item.title,
     body: item.body,
-    timestamp: formatDistance(new Date(item.created_at), now, { addSuffix: true }),
+    timestamp: formatDistance(item.created_at ? new Date(item.created_at) : now, now, { addSuffix: true }),
     read: Boolean(item.read),
-    type: item.type,
+    type: (item.type ?? "info") as AppNotification["type"],
+    topic: item.topic ?? undefined,
   };
 }
