@@ -26,9 +26,8 @@ jobs:
 
       - run: npm run build
         env:
-          # The app degrades gracefully without these (isSupabaseConfigured
-          # becomes false), so the build succeeds either way - set these repo
-          # secrets to build against real Supabase config values instead.
+          # Required: the build fails closed without the two Supabase values
+          # (see lib/auth/require-approved-role.ts), so set them as repo secrets.
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
