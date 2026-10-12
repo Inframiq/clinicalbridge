@@ -29,12 +29,12 @@ export async function requireApprovedRole(requiredRole: UserRole): Promise<UserP
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  // Verified locally against the cached JWKS - no Auth server round trip.
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims.sub;
+  if (!userId) redirect("/login");
 
-  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", userId).single();
   if (!profile) redirect("/login");
 
   if (profile.role !== requiredRole) {

@@ -152,7 +152,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async function checkUser() {
       if (!supabase) return;
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        // Read the session locally rather than round-tripping to the Auth
+        // server: this is only client UI state. proxy.ts and the role
+        // layouts verify the JWT server-side, and RLS guards every query.
+        const { data: { session: authSession } } = await supabase.auth.getSession();
+        const user = authSession?.user;
         if (user) {
           const profile = await fetchProfile(user.id, user.email, undefined, user.user_metadata?.full_name);
           const role = profile ? profile.role : (user.user_metadata?.role as UserRole) || "locum_tenens";
@@ -176,6 +180,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, authSession) => {
+        // checkUser() above already handles the initial session; handling it
+        // here too would fetch the same profile twice on every page load.
+        if (event === "INITIAL_SESSION") return;
         const authUser = authSession?.user;
         if (authUser) {
           const profile = await fetchProfile(authUser.id, authUser.email, authUser.user_metadata?.role, authUser.user_metadata?.full_name);
