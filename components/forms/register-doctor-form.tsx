@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -49,7 +49,6 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
     register,
     control,
     handleSubmit,
-    watch,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -66,7 +65,7 @@ export function RegisterDoctorForm({ onSuccess }: { onSuccess?: () => void }) {
     },
   });
 
-  const department = watch("department");
+  const department = useWatch({ control, name: "department" });
   useEffect(() => {
     if (!department && myDepartments.length > 0) {
       setValue("department", myDepartments[0].name);

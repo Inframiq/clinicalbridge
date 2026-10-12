@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -82,7 +82,6 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
     register,
     control,
     handleSubmit,
-    watch,
     setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormValues>({
@@ -102,14 +101,10 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
     },
   });
 
-  const [startTime, endTime, hourlyRate, doctorsNeeded, codeRed, department] = watch([
-    "startTime",
-    "endTime",
-    "hourlyRate",
-    "doctorsNeeded",
-    "codeRed",
-    "department",
-  ]);
+  const [startTime, endTime, hourlyRate, doctorsNeeded, codeRed, department] = useWatch({
+    control,
+    name: ["startTime", "endTime", "hourlyRate", "doctorsNeeded", "codeRed", "department"],
+  });
 
   // Departments load asynchronously from Supabase; default the field to the
   // first one once available instead of at form-init time when the list was

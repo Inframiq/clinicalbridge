@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm, type Path } from "react-hook-form";
+import { Controller, useForm, useWatch, type Path } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -140,7 +140,7 @@ export function WorkingDoctorOnboardingWizard() {
     register,
     control,
     trigger,
-    watch,
+    getValues,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
@@ -148,7 +148,7 @@ export function WorkingDoctorOnboardingWizard() {
     defaultValues: initialDefaults,
   });
 
-  const values = watch();
+  const values = useWatch({ control });
 
   // Resuming after "Needs Changes" re-fetches already-uploaded documents from
   // Supabase (server-side, scoped to this account by `profile.id`) so the
@@ -160,6 +160,9 @@ export function WorkingDoctorOnboardingWizard() {
     if (Object.keys(uploadedFiles).length > 0) return;
     const existing = doctors.find((d) => d.profileId === profile.id);
     if (existing?.uploadedDocuments && Object.keys(existing.uploadedDocuments).length > 0) {
+      // One-time prefill from async-loaded Supabase data; it also syncs
+      // react-hook-form via setValue, so it must stay in an effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUploadedFiles(existing.uploadedDocuments);
       setValue("documentsComplete", allDocumentsResolved(existing.uploadedDocuments), {
         shouldValidate: false,
@@ -198,6 +201,9 @@ export function WorkingDoctorOnboardingWizard() {
     if (stepIndex === steps.length - 1) {
       if (isSubmitting) return;
       setIsSubmitting(true);
+      // Read the full, typed form state at submit time rather than the
+      // render-time `useWatch` snapshot.
+      const values = getValues();
       try {
         const supabase = createClient();
         const res = await supabase.auth.getUser();
