@@ -245,7 +245,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
             </FieldContent>
           </Field>
           <Field data-invalid={!!errors.hourlyRate}>
-            <FieldLabel htmlFor="hourlyRate">Hourly Rate ($)</FieldLabel>
+            <FieldLabel htmlFor="hourlyRate">Hourly Rate (₹)</FieldLabel>
             <FieldContent>
               <Input
                 id="hourlyRate"

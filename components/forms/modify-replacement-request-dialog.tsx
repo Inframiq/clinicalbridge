@@ -70,7 +70,7 @@ export function ModifyReplacementRequestDialog({
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
           <FieldGroup>
             <Field data-invalid={!!errors.hourlyCompensation}>
-              <FieldLabel htmlFor="hourlyCompensation">Hourly Compensation ($)</FieldLabel>
+              <FieldLabel htmlFor="hourlyCompensation">Hourly Compensation (₹)</FieldLabel>
               <FieldContent>
                 <Input
                   id="hourlyCompensation"

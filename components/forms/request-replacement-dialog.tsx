@@ -95,7 +95,7 @@ export function RequestReplacementDialog({
             </Field>
 
             <Field data-invalid={!!errors.hourlyCompensation}>
-              <FieldLabel htmlFor="hourlyCompensation">Hourly Compensation ($)</FieldLabel>
+              <FieldLabel htmlFor="hourlyCompensation">Hourly Compensation (₹)</FieldLabel>
               <FieldContent>
                 <Input
                   id="hourlyCompensation"
