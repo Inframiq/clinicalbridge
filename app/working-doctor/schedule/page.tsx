@@ -14,10 +14,7 @@ import { useShifts } from "@/hooks/use-shifts";
 import { useDoctors } from "@/hooks/use-doctors";
 import { useAuthRole } from "@/context/auth-provider";
 import { shiftStatusMeta } from "@/lib/status";
-
-function toDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
+import { parseLocalIsoDate, toLocalIsoDate } from "@/lib/utils";
 
 export default function WorkingDoctorSchedulePage() {
   const { shifts: allShifts, confirmShiftAttendance } = useShifts();
@@ -28,10 +25,10 @@ export default function WorkingDoctorSchedulePage() {
     () => allShifts.filter((s) => s.assignedDoctorId === myDoctor?.id),
     [allShifts, myDoctor?.id]
   );
-  const scheduledDates = useMemo(() => myShifts.map((s) => new Date(s.date)), [myShifts]);
-  const [selected, setSelected] = useState<Date | undefined>(new Date("2025-05-25"));
+  const scheduledDates = useMemo(() => myShifts.map((s) => parseLocalIsoDate(s.date)), [myShifts]);
+  const [selected, setSelected] = useState<Date | undefined>(() => new Date());
 
-  const shiftsOnDay = selected ? myShifts.filter((s) => s.date === toDateKey(selected)) : [];
+  const shiftsOnDay = selected ? myShifts.filter((s) => s.date === toLocalIsoDate(selected)) : [];
 
   return (
     <div>

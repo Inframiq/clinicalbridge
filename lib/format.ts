@@ -1,3 +1,5 @@
+import { parseLocalIsoDate } from "@/lib/utils";
+
 export function formatCurrency(
   amount: number,
   options?: { decimals?: boolean; currency?: "USD" | "INR" }
@@ -19,7 +21,9 @@ export function formatCompactNumber(value: number): string {
 }
 
 export function formatDate(dateStr: string, opts: Intl.DateTimeFormatOptions = {}): string {
-  const date = new Date(dateStr);
+  // Date-only strings ("YYYY-MM-DD") are calendar days, not instants — parse them
+  // as local midnight so the displayed day matches the shift calendar.
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? parseLocalIsoDate(dateStr) : new Date(dateStr);
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
