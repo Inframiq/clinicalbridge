@@ -68,8 +68,8 @@ export function VerifyHospitalDialog({
   const alreadyDecided =
     facility.registrationStatus === "Approved" || facility.registrationStatus === "Rejected";
 
-  function handleReview(key: string, decision: "approved" | "rejected") {
-    void reviewFacilityDocument(facility.id, key, decision);
+  function handleReview(key: string, decision: "approved" | "rejected", reason?: string) {
+    void reviewFacilityDocument(facility.id, key, decision, reason);
   }
 
   function handleView(key: string) {
@@ -184,9 +184,10 @@ export function VerifyHospitalDialog({
                   status={statusOf(file.status)}
                   reviewedAt={file.reviewedAt}
                   viewedAt={file.viewedAt}
+                  rejectionReason={file.rejectionReason}
                   readOnly={alreadyDecided}
                   onApprove={() => handleReview(key, "approved")}
-                  onReject={() => handleReview(key, "rejected")}
+                  onReject={(reason) => handleReview(key, "rejected", reason)}
                   onView={() => handleView(key)}
                 />
               ))

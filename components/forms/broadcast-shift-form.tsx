@@ -87,7 +87,7 @@ export function BroadcastShiftForm({ onSuccess }: { onSuccess?: () => void }) {
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      date: new Date().toISOString().slice(0, 10),
+      date: todayIsoDate(),
       startTime: "08:00",
       endTime: "16:00",
       department: "",

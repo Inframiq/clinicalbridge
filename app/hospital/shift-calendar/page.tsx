@@ -21,18 +21,15 @@ import { useDoctors } from "@/hooks/use-doctors";
 import { shiftStatusMeta } from "@/lib/status";
 import { formatDate } from "@/lib/format";
 import { getDoctorName } from "@/lib/selectors";
-
-function toDateKey(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
+import { toLocalIsoDate } from "@/lib/utils";
 
 export default function ShiftCalendarPage() {
   const { shifts, updateShiftStatus } = useShifts();
   const { doctors, assignDoctorToShift } = useDoctors();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date("2025-05-25"));
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date());
 
   const shiftDates = useMemo(() => new Set(shifts.map((s) => s.date)), [shifts]);
-  const selectedKey = toDateKey(selectedDate);
+  const selectedKey = toLocalIsoDate(selectedDate);
   const dayShifts = shifts.filter((s) => s.date === selectedKey);
 
   return (
@@ -49,7 +46,7 @@ export default function ShiftCalendarPage() {
               mode="single"
               selected={selectedDate}
               onSelect={(date) => date && setSelectedDate(date)}
-              modifiers={{ hasShifts: (date) => shiftDates.has(toDateKey(date)) }}
+              modifiers={{ hasShifts: (date) => shiftDates.has(toLocalIsoDate(date)) }}
               modifiersClassNames={{ hasShifts: "font-semibold text-brand" }}
             />
           </CardContent>
